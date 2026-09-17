@@ -42,6 +42,7 @@ import com.example.recipefinder.data.RecipeViewModel
 import com.example.recipefinder.data.Step
 import com.example.recipefinder.data.Tag
 import com.example.recipefinder.data.Unit
+import com.example.recipefinder.data.fractionString
 import com.example.recipefinder.database.updateSavedRecipesInDatabase
 import com.example.recipefinder.recipeViewModel
 import com.example.recipefinder.ui.theme.Primary
@@ -130,43 +131,68 @@ fun SingleRecipeScreen(
                                 modifier = Modifier.fillMaxHeight()
                             ) {
                                 Spacer(modifier = Modifier.width(16.dp))
-                                if(saveable) {
-                                    if (favoritedRecipes.value.contains(recipe)) {
-                                        Button(
-                                            onClick = {
-                                                model.setSavedRecipes(favoritedRecipes.value.filter { it.id != recipe.id })
-                                                updateSavedRecipesInDatabase(
-                                                    Firebase.firestore,
-                                                    Firebase.auth.currentUser?.uid ?: "",
-                                                    favoritedRecipes.value.filter { it.id != recipe.id })
-                                            },
-                                            colors = ButtonColors(
-                                                containerColor = Color(0xFFFFD700),
-                                                contentColor = Color(0xFFFFD700),
-                                                disabledContentColor = Color.Gray,
-                                                disabledContainerColor = Color.DarkGray
-                                            ),
-                                            shape = RoundedCornerShape(4.dp),
-                                            modifier = Modifier.width(100.dp)
-                                        ) {
-                                            Text(
-                                                text = "Saved",
-                                                color = Color.White,
-                                                style = Typography.bodyLarge.copy(letterSpacing = 2.sp)
-                                            )
-                                        }
-                                    } else {
-                                        Button(
-                                            onClick = {
-                                                model.setSavedRecipes(favoritedRecipes.value + recipe)
-                                                updateSavedRecipesInDatabase(
-                                                    Firebase.firestore,
-                                                    Firebase.auth.currentUser?.uid ?: "",
-                                                    favoritedRecipes.value + recipe
+                                Row() {
+                                    if (saveable) {
+                                        if (favoritedRecipes.value.contains(recipe)) {
+                                            Button(
+                                                onClick = {
+                                                    model.setSavedRecipes(favoritedRecipes.value.filter { it.id != recipe.id })
+                                                    updateSavedRecipesInDatabase(
+                                                        Firebase.firestore,
+                                                        Firebase.auth.currentUser?.uid ?: "",
+                                                        favoritedRecipes.value.filter { it.id != recipe.id })
+                                                },
+                                                colors = ButtonColors(
+                                                    containerColor = Color(0xFFFFD700),
+                                                    contentColor = Color(0xFFFFD700),
+                                                    disabledContentColor = Color.Gray,
+                                                    disabledContainerColor = Color.DarkGray
+                                                ),
+                                                shape = RoundedCornerShape(4.dp),
+                                                modifier = Modifier.width(100.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Saved",
+                                                    color = Color.White,
+                                                    style = Typography.bodyLarge.copy(letterSpacing = 2.sp)
                                                 )
+                                            }
+                                        } else {
+                                            Button(
+                                                onClick = {
+                                                    model.setSavedRecipes(favoritedRecipes.value + recipe)
+                                                    updateSavedRecipesInDatabase(
+                                                        Firebase.firestore,
+                                                        Firebase.auth.currentUser?.uid ?: "",
+                                                        favoritedRecipes.value + recipe
+                                                    )
+                                                },
+                                                colors = ButtonColors(
+                                                    containerColor = Color.White,
+                                                    contentColor = Color.White,
+                                                    disabledContentColor = Color.Gray,
+                                                    disabledContainerColor = Color.DarkGray
+                                                ),
+                                                shape = RoundedCornerShape(4.dp),
+                                                modifier = Modifier.width(100.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Save",
+                                                    color = Color(0xFFFFD700),
+                                                    style = Typography.bodyLarge.copy(letterSpacing = 2.sp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (recipe.owner != "Anonymous" && recipe.owner ==  Firebase.auth.currentUser?.uid)
+                                    {
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Button(
+                                            onClick = {
+
                                             },
                                             colors = ButtonColors(
-                                                containerColor = Color.White,
+                                                containerColor = Secondary,
                                                 contentColor = Color.White,
                                                 disabledContentColor = Color.Gray,
                                                 disabledContainerColor = Color.DarkGray
@@ -175,8 +201,8 @@ fun SingleRecipeScreen(
                                             modifier = Modifier.width(100.dp)
                                         ) {
                                             Text(
-                                                text = "Save",
-                                                color = Color(0xFFFFD700),
+                                                text = "Edit",
+                                                color = Color.White,
                                                 style = Typography.bodyLarge.copy(letterSpacing = 2.sp)
                                             )
                                         }
@@ -257,7 +283,7 @@ fun SingleRecipeScreen(
                                     modifier = Modifier.padding(horizontal = 8.dp)
                                 )
                                 Text(
-                                    text = "${ingredient.quantity} ${ingredient.unit.toString().lowercase()} ",
+                                    text = "${ingredient.quantity.fractionString()} ${ingredient.unit.toString().lowercase()} ",
                                     color = Color.Black,
                                     style = Typography.bodyLarge
                                 )
@@ -315,9 +341,9 @@ fun SingleRecipeScreen(
 @Composable
 fun SingleRecipeScreenPreview() {
     val example = Recipe(1, "Example Recipe 1", "Description of Example Recipe 1", 40, tags = listOf(Tag.SOUP, Tag.LUNCH, Tag.PASTA, Tag.DAIRY_FREE, Tag.TOFU, Tag.GLUTEN_FREE), ingredients = listOf(
-        Ingredient(1, "Ingredient 1", 2, Unit.CUP, note = "Example note for ingredient 1"),
-        Ingredient(2, "Ingredient 2", 1, Unit.TABLESPOON),
-        Ingredient(3, "Ingredient 3", 3, Unit.TEASPOON)
+        Ingredient(1, "Ingredient 1", 2.0, Unit.CUP, note = "Example note for ingredient 1"),
+        Ingredient(2, "Ingredient 2", 1.0, Unit.TABLESPOON),
+        Ingredient(3, "Ingredient 3", 3.0, Unit.TEASPOON)
     ), steps = listOf(
         Step(1, "This would be step 1", "This is the first step of the recipe. This is long winded to show that it can handle much longer descriptions."),
         Step(2, "This would be step 2", "This is the second step of the recipe. It can also be long. For example, you might need to explain how to prepare the ingredients or how to cook them."),

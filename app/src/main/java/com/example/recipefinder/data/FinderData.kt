@@ -1,5 +1,8 @@
 package com.example.recipefinder.data
 
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
+
 
 // Represents a recipe in the Recipe Finder application.
 data class Recipe(
@@ -19,10 +22,34 @@ data class Recipe(
 data class Ingredient(
     val id: Int,
     val name: String,
-    val quantity: Int,
+    val quantity: Double,
     val unit: Unit,
     val note: String = ""
 )
+
+// Formats a quantity without a trailing ".0" for whole numbers.
+fun Double.trimmedString(): String =
+    if (this == this.toLong().toDouble()) this.toLong().toString() else this.toString()
+
+// Formats a quantity as a whole number or simple fraction (denominator <= 10) when possible,
+// e.g. 0.6666667 -> "2/3", 1.5 -> "1 1/2". Falls back to a 2-decimal-place string otherwise.
+fun Double.fractionString(): String {
+    val whole = this.toLong()
+    if (this == whole.toDouble()) return whole.toString()
+
+    val fractional = this - whole
+    val tolerance = 0.0001
+    for (denominator in 2..10) {
+        val numerator = Math.round(fractional * denominator)
+        if (numerator == 0L || numerator == denominator.toLong()) continue
+        if (Math.abs(fractional - numerator.toDouble() / denominator) < tolerance) {
+            val fractionPart = "$numerator/$denominator"
+            return if (whole != 0L) "$whole $fractionPart" else fractionPart
+        }
+    }
+
+    return "%.2f".format(this)
+}
 
 // Represents a step in the preparation of a recipe.
 data class Step(
@@ -62,7 +89,7 @@ fun findRecipesWithTags(
     tags: List<Tag>
 ): List<Recipe> {
     return recipes.filter { recipe ->
-        recipe.tags.all { it in tags }
+        tags.all { it in recipe.tags }
     }
 }
 
@@ -94,5 +121,13 @@ fun findRecipesWithAllIngredients(
         ingredients.all { ingredient ->
             recipe.ingredients.any { it.name == ingredient }
         }
+    }
+}
+
+fun findRecipesIMade(
+    recipes: List<Recipe>
+): List<Recipe> {
+    return recipes.filter { recipe ->
+        recipe.owner ==  Firebase.auth.currentUser?.uid
     }
 }

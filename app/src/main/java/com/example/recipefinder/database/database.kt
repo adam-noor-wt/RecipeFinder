@@ -24,7 +24,7 @@ data class SafeRecipe(
 data class SafeIngredient(
     val id: Int = 0,
     val name: String = "Something went wrong",
-    val quantity: Int = 0,
+    val quantity: Double = 0.0,
     val unit: String = "",
     val note: String = ""
 )
@@ -57,7 +57,8 @@ fun safeRecipeConverter(recipe: SafeRecipe): Recipe
         style = recipe.style,
         tags = recipe.tags.map { tag ->
             Tag.valueOf(tag.tag) // Convert String to enum
-        }
+        },
+        owner = recipe.owner
     )
 }
 

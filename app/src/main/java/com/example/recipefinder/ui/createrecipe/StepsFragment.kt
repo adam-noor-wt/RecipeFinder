@@ -1,27 +1,27 @@
 package com.example.recipefinder.ui.createrecipe
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.recipefinder.data.Step
-import com.example.recipefinder.ui.theme.Primary
 import com.example.recipefinder.ui.theme.Secondary
-import com.example.recipefinder.ui.theme.dialogFieldColors
+import com.example.recipefinder.ui.theme.authFieldColors
 
 @Composable
 fun StepsInputDialog(
@@ -29,77 +29,58 @@ fun StepsInputDialog(
     onDismiss: () -> Unit,
     assignedIndex: Int = 0
 ) {
-    var index by remember { mutableIntStateOf(assignedIndex) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var imageUrl by remember { mutableStateOf("") }
 
-    androidx.compose.material3.AlertDialog(
-        containerColor = Secondary,
+    AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(color = Color.White, text = "Add Step") },
+        shape = MaterialTheme.shapes.large,
+        title = { Text("Add Step", color = Secondary, style = MaterialTheme.typography.titleLarge) },
         text = {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    colors = dialogFieldColors(),
-                    value = index.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { index = it }
-                    },
-                    label = { Text("Index") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    )
-                )
-                OutlinedTextField(
-                    colors = dialogFieldColors(),
+                    colors = authFieldColors(),
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Title") }
+                    label = { Text("Title") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                 )
-
                 OutlinedTextField(
-                    colors = dialogFieldColors(),
+                    colors = authFieldColors(),
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Instructions") }
+                    label = { Text("Instructions") },
+                    shape = MaterialTheme.shapes.medium,
                 )
-
                 OutlinedTextField(
-                    colors = dialogFieldColors(),
+                    colors = authFieldColors(),
                     value = imageUrl,
                     onValueChange = { imageUrl = it },
                     label = { Text("Image") },
                     placeholder = { Text("No function (Requires Premium Firestore)") },
+                    shape = MaterialTheme.shapes.medium,
                 )
             }
         },
         confirmButton = {
             Button(
-                enabled = title.isNotBlank() && description.isNotBlank() && index.toString().isNotBlank(),
+                enabled = title.isNotBlank() && description.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Primary,
+                    containerColor = Secondary,
                     contentColor = Color.White
                 ),
                 onClick = {
-                    if (title.isNotBlank() && description.isNotBlank() && index.toString().isNotBlank()) {
-                        onConfirm(Step(index.toInt(), title.lowercase().replaceFirstChar(Char::titlecase), description, imageUrl))
-                    }
+                    onConfirm(Step(assignedIndex, title.lowercase().replaceFirstChar(Char::titlecase), description, imageUrl))
                 }
             ) {
                 Text("Confirm")
             }
         },
         dismissButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Primary
-                ),
-            ) {
-                Text("Cancel")
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel", color = Secondary)
             }
         }
     )
@@ -112,57 +93,44 @@ fun EditStepInputDialog(
     onDismiss: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val newIndex = remember { mutableIntStateOf(step.index) }
     val newTitle = remember { mutableStateOf(step.title) }
     val newDescription = remember { mutableStateOf(step.description) }
     val newImageUrl = remember { mutableStateOf(step.imageUrl) }
 
-    androidx.compose.material3.AlertDialog(
-        containerColor = Secondary,
+    AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Step", color = Color.White) },
+        shape = MaterialTheme.shapes.large,
+        title = { Text("Edit Step", color = Secondary, style = MaterialTheme.typography.titleLarge) },
         text = {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    colors = dialogFieldColors(),
-                    value = newIndex.intValue.toString(),
-                    onValueChange = { value ->
-                        value.toIntOrNull()?.let { newIndex.intValue = it }
-                    },
-                    label = { Text("Index") },
-                    placeholder = { Text(newIndex.intValue.toString()) },
-                    modifier = Modifier.fillMaxWidth(.4f),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    )
-                )
-                OutlinedTextField(
-                    colors = dialogFieldColors(),
+                    colors = authFieldColors(),
                     value = newTitle.value,
                     onValueChange = { newTitle.value = it },
                     label = { Text("Title") },
-                    placeholder = { Text(newTitle.value) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                 )
                 OutlinedTextField(
-                    colors = dialogFieldColors(),
+                    colors = authFieldColors(),
                     value = newDescription.value,
                     onValueChange = { newDescription.value = it },
                     label = { Text("Description") },
-                    placeholder = { Text(newDescription.value) },
+                    shape = MaterialTheme.shapes.medium,
                 )
                 OutlinedTextField(
-                    colors = dialogFieldColors(),
+                    colors = authFieldColors(),
                     value = newImageUrl.value,
                     onValueChange = { newImageUrl.value = it },
                     label = { Text("Image URL") },
-                    placeholder = { Text(newImageUrl.value) },
+                    shape = MaterialTheme.shapes.medium,
                 )
                 Button(
                     onClick = onRemove,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
+                    shape = MaterialTheme.shapes.medium,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.Red,
                         contentColor = Color.White
@@ -170,34 +138,26 @@ fun EditStepInputDialog(
                 ) {
                     Text(
                         text = "Remove Step",
-                        color = Color.White,
-                        modifier = Modifier.padding(0.dp, 8.dp, 0.dp, 8.dp)
+                        modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
             }
-
         },
         confirmButton = {
             Button(
-                enabled = newTitle.value.isNotBlank() && newDescription.value.isNotBlank() && newIndex.intValue.toString().isNotBlank(),
+                enabled = newTitle.value.isNotBlank() && newDescription.value.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Primary,
+                    containerColor = Secondary,
                     contentColor = Color.White
                 ),
-                onClick = {onConfirm(Step(newIndex.intValue, newTitle.value.lowercase().replaceFirstChar(Char::titlecase), newDescription.value, newImageUrl.value))}
+                onClick = { onConfirm(Step(step.index, newTitle.value.lowercase().replaceFirstChar(Char::titlecase), newDescription.value, newImageUrl.value)) }
             ) {
                 Text("Confirm")
             }
         },
         dismissButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Primary
-                ),
-            ) {
-                Text("Cancel")
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel", color = Secondary)
             }
         }
     )

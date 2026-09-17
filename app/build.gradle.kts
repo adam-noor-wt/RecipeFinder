@@ -49,6 +49,8 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.common.jvm)
@@ -67,4 +69,5 @@ dependencies {
     implementation(libs.firebase.common.ktx)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.ui.auth)
+    implementation(libs.mlkit.text.recognition)
 }

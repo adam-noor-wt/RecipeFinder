@@ -50,6 +50,11 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+
+
 
 
 
@@ -67,6 +72,12 @@ fun NavHostController.navigateSingleTopTo(route: String) =
 class MainActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
     override fun onCreate(savedInstanceState: Bundle?) {
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        //hide the navigation bars
+        windowInsetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+
+        windowInsetsController.hide(WindowInsetsCompat.Type.navigationBars())
         super.onCreate(savedInstanceState)
         // Initialize Firebase Auth
         auth = Firebase.auth
@@ -80,12 +91,12 @@ class MainActivity : ComponentActivity() {
 
 }
 
-val tomato = Ingredient(id = 1, name = "Tomato", quantity = 1, unit = Unit.CUP)
-val tofu = Ingredient(id = 2, name = "Tofu", quantity = 200, unit = Unit.GRAM)
-val tomatoSauce = Ingredient(id = 3, name = "Tomato Sauce", quantity = 1, unit = Unit.CUP)
-val pasta = Ingredient(id = 4, name = "Pasta", quantity = 200, unit = Unit.GRAM)
-val salt = Ingredient(id = 5, name = "Salt", quantity = 1, unit = Unit.TEASPOON)
-val pepper = Ingredient(id = 6, name = "Pepper", quantity = 1, unit = Unit.TEASPOON)
+val tomato = Ingredient(id = 1, name = "Tomato", quantity = 1.0, unit = Unit.CUP)
+val tofu = Ingredient(id = 2, name = "Tofu", quantity = 200.0, unit = Unit.GRAM)
+val tomatoSauce = Ingredient(id = 3, name = "Tomato Sauce", quantity = 1.0, unit = Unit.CUP)
+val pasta = Ingredient(id = 4, name = "Pasta", quantity = 200.0, unit = Unit.GRAM)
+val salt = Ingredient(id = 5, name = "Salt", quantity = 1.0, unit = Unit.TEASPOON)
+val pepper = Ingredient(id = 6, name = "Pepper", quantity = 1.0, unit = Unit.TEASPOON)
 
 val example: MutableList<Recipe>  = mutableListOf(
     Recipe(1, "Example Recipe 1", "Description of Example Recipe 1", 80, tags = listOf(Tag.SOUP, Tag.LUNCH, Tag.PASTA, Tag.DAIRY_FREE, Tag.TOFU, Tag.GLUTEN_FREE), ingredients = listOf(tofu, tomato, pasta)),
@@ -93,9 +104,9 @@ val example: MutableList<Recipe>  = mutableListOf(
     Recipe(3, "Example Recipe 3", "Description of Example Recipe 3", 120, tags = listOf(Tag.DESSERT), ingredients = listOf(salt, pepper)),
     Recipe(4, "Example Recipe 4", "Description of Example Recipe 4", 60),
     Recipe(5, "Example Recipe 5", "Description of Example Recipe 5", 40, tags = listOf(Tag.SOUP, Tag.LUNCH, Tag.PASTA, Tag.DAIRY_FREE, Tag.TOFU, Tag.GLUTEN_FREE), ingredients = listOf(
-        Ingredient(1, "Ingredient 1", 2, Unit.CUP, note = "Example note for ingredient 1"),
-        Ingredient(2, "Ingredient 2", 1, Unit.TABLESPOON),
-        Ingredient(3, "Ingredient 3", 3, Unit.TEASPOON)
+        Ingredient(1, "Ingredient 1", 2.0, Unit.CUP, note = "Example note for ingredient 1"),
+        Ingredient(2, "Ingredient 2", 1.0, Unit.TABLESPOON),
+        Ingredient(3, "Ingredient 3", 3.0, Unit.TEASPOON)
     ), steps = listOf(
         Step(0, "This would be step 1", "This is the first step of the recipe. This is long winded to show that it can handle much longer descriptions."),
         Step(1, "This would be step 2", "This is the second step of the recipe. It can also be long. For example, you might need to explain how to prepare the ingredients or how to cook them."),

@@ -28,6 +28,28 @@ fun dialogFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.White
 )
 
+/**
+ * White-filled fields with [Secondary]-colored text/labels/icons — for forms
+ * sitting on a Primary-colored surface (e.g. LoginModal) where the field itself
+ * needs to read as a distinct input area rather than blending into the card.
+ */
+@Composable
+fun authFieldColors() = OutlinedTextFieldDefaults.colors(
+    unfocusedContainerColor = Color.White,
+    unfocusedTextColor = Secondary,
+    unfocusedBorderColor = Color.Transparent,
+    unfocusedLabelColor = Secondary,
+    unfocusedLeadingIconColor = Secondary,
+    unfocusedTrailingIconColor = Secondary,
+    focusedContainerColor = Color.White,
+    focusedLabelColor = Secondary,
+    focusedBorderColor = Secondary,
+    focusedTextColor = Secondary,
+    focusedLeadingIconColor = Secondary,
+    focusedTrailingIconColor = Secondary,
+    cursorColor = Secondary,
+)
+
 @Composable
 fun inputFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedContainerColor = Color.White,
@@ -39,3 +61,4 @@ fun inputFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Secondary,
     focusedTextColor = Color.Black
 )
+
