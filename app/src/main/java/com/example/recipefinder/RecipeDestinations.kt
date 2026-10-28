@@ -3,11 +3,12 @@ package com.example.recipefinder
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavType
@@ -36,9 +37,9 @@ object Search : RecipeDestination {
     override val route = "search"
 }
 
-object Market : RecipeDestination {
-    override val icon = Icons.Filled.ShoppingCart
-    override val route = "market"
+object Discover : RecipeDestination {
+    override val icon = Icons.Outlined.Explore
+    override val route = "discover"
 }
 
 object Settings : RecipeDestination {
@@ -61,4 +62,14 @@ object SingleRecipe : RecipeDestination {
     )
 }
 
-val recipeDestinations = listOf(Home, Saved, Search, Market, Settings)
+object EditRecipe : RecipeDestination {
+    override val icon = Icons.Outlined.MailOutline // Placeholder icon, not used in navigation
+    override val route = "edit_recipe"
+    const val recipeIdArg = "recipe_id"
+    val routeWithArgs = "${route}/{${recipeIdArg}}"
+    val arguments = listOf(
+        navArgument(recipeIdArg) { type = NavType.IntType }
+    )
+}
+
+val recipeDestinations = listOf(Home, Saved, Search, Discover, Settings)

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import androidx.compose.animation.EnterTransition
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import coil.compose.AsyncImage
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,8 +70,7 @@ import com.example.recipefinder.ui.theme.Typography
 private const val MAX_INGREDIENT_SUGGESTIONS = 8
 private const val INGREDIENT_NAME_CHAR_LIMIT = 24
 
-private fun tagLabel(tag: Tag): String =
-    tag.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+fun tagLabel(tag: Tag): String = tag.displayName
 
 // Estimates how many tags fit into a fixed-size area, packing them into rows the way
 // FlowRow will, so we only compose as many pills as the reserved bottom-quarter zone
@@ -137,7 +137,7 @@ private fun groupIngredientNames(names: List<String>): List<IngredientGroup> =
         }
 
 @Composable
-private fun AddSectionButton(text: String, onClick: () -> Unit) {
+fun AddSectionButton(text: String, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -150,7 +150,7 @@ private fun AddSectionButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun IngredientChip(text: String, onRemove: () -> Unit) {
+fun IngredientChip(text: String, onRemove: () -> Unit) {
     Card(
         modifier = Modifier.padding(4.dp),
         shape = MaterialTheme.shapes.small,
@@ -409,8 +409,8 @@ fun SearchScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                         ) {
-                            Image(
-                                painter = androidx.compose.ui.res.painterResource(id = com.example.recipefinder.R.drawable.alfredo),
+                            AsyncImage(
+                                model = recipe.imageUrl.ifEmpty { com.example.recipefinder.R.drawable.alfredo },
                                 contentDescription = recipe.title,
                                 modifier = Modifier
                                     .fillMaxSize(),
@@ -483,8 +483,9 @@ fun SearchScreen(
                                         .fillMaxWidth(),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    val visibleTags = remember(recipe.tags, maxWidth, maxHeight) {
-                                        packTagsToFit(recipe.tags, maxWidth.value, maxHeight.value)
+                                    val sortedTags = Tag.sortedByPriority(recipe.tags)
+                                    val visibleTags = remember(sortedTags, maxWidth, maxHeight) {
+                                        packTagsToFit(sortedTags, maxWidth.value, maxHeight.value)
                                     }
                                     FlowRow(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),

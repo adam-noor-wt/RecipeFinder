@@ -1,8 +1,16 @@
 package com.example.recipefinder.ui.recipes
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import coil.compose.AsyncImage
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,20 +23,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.example.recipefinder.data.Ingredient
 import com.example.recipefinder.data.Recipe
 import com.example.recipefinder.data.RecipeViewModel
@@ -57,27 +75,63 @@ import com.google.firebase.ktx.Firebase
 fun SingleRecipeScreen(
     recipe: Recipe,
     model: RecipeViewModel,
-    saveable: Boolean = true
+    saveable: Boolean = true,
+    onEditClick: (Recipe) -> kotlin.Unit = {}
 ) {
     val favoritedRecipes = recipeViewModel.savedRecipes.collectAsState()
+
+    // Scroll state for unified container
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // Constants
+    val COLLAPSE_THRESHOLD = 400f
+
+    // Derived collapse progress (0f = expanded, 1f = collapsed)
+    val collapseProgress by remember {
+        derivedStateOf {
+            (scrollState.value.toFloat() / COLLAPSE_THRESHOLD).coerceIn(0f, 1f)
+        }
+    }
+
+    // Boolean for fully collapsed state
+    val isCollapsed by remember {
+        derivedStateOf {
+            scrollState.value >= COLLAPSE_THRESHOLD.toInt()
+        }
+    }
+
         Box(
+            modifier = Modifier.fillMaxSize()
             ){
-            // Background image with alpha 0.5
-            Image(
-                painter = androidx.compose.ui.res.painterResource(id = com.example.recipefinder.R.drawable.alfredo),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.4f)
-                    .background(Primary),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                alpha = 0.3f
-            )
             Column(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
             ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            // Slide header up as user scrolls
+                            translationY = -(scrollState.value.toFloat().coerceAtMost(COLLAPSE_THRESHOLD))
+                            // Fade out header content
+                            alpha = 1f - collapseProgress
+                        }
+                ) {
+                // Background image with alpha that fades during collapse
+                AsyncImage(
+                    model = recipe.imageUrl.ifEmpty { com.example.recipefinder.R.drawable.alfredo },
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .background(Primary),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    alpha = 0.3f
+                )
                 Column(
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(.4f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     val recipeTitle: String = recipe.title
                     Row {
@@ -189,7 +243,7 @@ fun SingleRecipeScreen(
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Button(
                                             onClick = {
-
+                                                onEditClick(recipe)
                                             },
                                             colors = ButtonColors(
                                                 containerColor = Secondary,
@@ -214,10 +268,10 @@ fun SingleRecipeScreen(
 
                         }
 
-                        Image(
-                            painter = androidx.compose.ui.res.painterResource(id = com.example.recipefinder.R.drawable.alfredo), // Placeholder for recipe.image
+                        AsyncImage(
+                            model = recipe.imageUrl.ifEmpty { com.example.recipefinder.R.drawable.alfredo },
                             contentDescription = "Recipe Image",
-                            modifier = Modifier.fillMaxWidth().fillMaxHeight(.45f).padding(top = 24.dp, end = 8.dp),
+                            modifier = Modifier.size(150.dp).padding(top = 14.dp, end = 8.dp),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
                         Spacer(
@@ -234,10 +288,9 @@ fun SingleRecipeScreen(
                         modifier = Modifier
                             .padding(start = 16.dp, top = 8.dp, end = 16.dp)
                     ) {
-                        recipe.tags.forEachIndexed { index, tag ->
+                        Tag.sortedByPriority(recipe.tags).forEachIndexed { index, tag ->
                             Text(
-                                text = tag.name.replace('_', ' ').lowercase()
-                                    .replaceFirstChar { it.uppercase() },
+                                text = tag.displayName,
                                 color = Primary,
                                 style = Typography.labelMedium,
                                 modifier = Modifier
@@ -255,8 +308,9 @@ fun SingleRecipeScreen(
                         }
                     }
                 }
+                }
                 Column (
-                    modifier = Modifier.verticalScroll(rememberScrollState())
+                    modifier = Modifier
                 ) {
                     // Ingredients
                     Column(
@@ -332,8 +386,73 @@ fun SingleRecipeScreen(
                 }
 
             }
+
+            // Overlay collapsed bar at top
+            CollapsedHeaderBar(
+                recipe = recipe,
+                isVisible = isCollapsed,
+                onExpand = {
+                    val job = coroutineScope.launch {
+                        scrollState.animateScrollTo(
+                            value = 0,
+                            animationSpec = tween(
+                                durationMillis = 300,
+                                easing = FastOutSlowInEasing
+                            )
+                        )
+                    }
+                },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
+}
+
+@Composable
+private fun CollapsedHeaderBar(
+    recipe: Recipe,
+    isVisible: Boolean,
+    onExpand: () -> kotlin.Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn(animationSpec = tween(200)) + expandVertically(),
+        exit = fadeOut(animationSpec = tween(200)) + shrinkVertically(),
+        modifier = modifier
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clickable { onExpand() },
+            color = Primary,
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = recipe.title,
+                    color = Color.White,
+                    style = Typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Expand header",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
 }
 
 @SuppressLint("ViewModelConstructorInComposable")

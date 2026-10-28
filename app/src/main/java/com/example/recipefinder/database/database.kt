@@ -91,16 +91,24 @@ fun recipeConverter(recipe: Recipe): SafeRecipe
     )
 }
 
-fun writeRecipeToDatabase(db: FirebaseFirestore, recipe: Recipe) {
+fun writeRecipeToDatabase(
+    db: FirebaseFirestore,
+    recipe: Recipe,
+    onSuccess: (Recipe) -> kotlin.Unit = {},
+    onFailure: (Exception) -> kotlin.Unit = {}
+) {
     val newDocRef = db.collection("RECIPES").document()
-    newDocRef.set(recipeConverter(recipe.copy(id = newDocRef.id.hashCode())))
+    val recipeWithId = recipe.copy(id = newDocRef.id.hashCode())
+    newDocRef.set(recipeConverter(recipeWithId))
         .addOnSuccessListener {
             // Write was successful
             println("Recipe written successfully: ${recipe.title}")
+            onSuccess(recipeWithId)
         }
         .addOnFailureListener { exception ->
             // Write failed
             println("Error writing recipe: ${exception.message}")
+            onFailure(exception)
         }
 }
 
@@ -153,14 +161,38 @@ fun updateSavedRecipesInDatabase(db: FirebaseFirestore, userId: String, savedRec
         }
 }
 
-fun updateRecipeInDatabase(db: FirebaseFirestore, recipe: Recipe) {
-    db.collection("RECIPES").document(recipe.id.toString()).set(recipeConverter(recipe))
-//        .addOnSuccessListener {
-//            // Update was successful
-//            println("Recipe updated successfully: ${recipe.title}")
-//        }
-//        .addOnFailureListener { exception ->
-//            // Update failed
-//            println("Error updating recipe: ${exception.message}")
-//        }
+fun updateRecipeInDatabase(
+    db: FirebaseFirestore,
+    recipe: Recipe,
+    onSuccess: (Recipe) -> kotlin.Unit = {},
+    onFailure: (Exception) -> kotlin.Unit = {}
+) {
+    // Query for the document where the 'id' field matches the recipe's id
+    db.collection("RECIPES")
+        .whereEqualTo("id", recipe.id)
+        .get()
+        .addOnSuccessListener { querySnapshot ->
+            if (!querySnapshot.isEmpty) {
+                // Found the document, update it
+                val documentId = querySnapshot.documents[0].id
+                db.collection("RECIPES").document(documentId).set(recipeConverter(recipe))
+                    .addOnSuccessListener {
+                        println("Recipe updated successfully: ${recipe.title}")
+                        onSuccess(recipe)
+                    }
+                    .addOnFailureListener { exception ->
+                        println("Error updating recipe: ${exception.message}")
+                        onFailure(exception)
+                    }
+            } else {
+                // Document not found, this shouldn't happen
+                val error = Exception("Recipe with id ${recipe.id} not found in database")
+                println("Error: ${error.message}")
+                onFailure(error)
+            }
+        }
+        .addOnFailureListener { exception ->
+            println("Error querying for recipe: ${exception.message}")
+            onFailure(exception)
+        }
 }

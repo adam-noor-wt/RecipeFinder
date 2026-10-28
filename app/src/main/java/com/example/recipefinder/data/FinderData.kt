@@ -60,8 +60,51 @@ data class Step(
 )
 
 // Represents a tag that can be associated with a recipe.
-enum class Tag {
-    VEGETARIAN, VEGAN, GLUTEN_FREE, DAIRY_FREE, PASTA, DESSERT, SALAD, SOUP, PROTEIN, TOFU, CURRY, SPICY, SWEET, SAVORY, BREAKFAST, LUNCH, DINNER, SNACK, SMOOTHIE
+enum class Tag(
+    val displayName: String,
+    val priority: Int,
+    val category: TagCategory
+) {
+    // Meal types (highest priority)
+    BREAKFAST("Breakfast", 100, TagCategory.MEAL_TYPE),
+    LUNCH("Lunch", 90, TagCategory.MEAL_TYPE),
+    DINNER("Dinner", 80, TagCategory.MEAL_TYPE),
+    SNACK("Snack", 70, TagCategory.MEAL_TYPE),
+
+    // Dish types
+    DESSERT("Dessert", 60, TagCategory.DISH_TYPE),
+    SOUP("Soup", 55, TagCategory.DISH_TYPE),
+    SALAD("Salad", 54, TagCategory.DISH_TYPE),
+    SMOOTHIE("Smoothie", 53, TagCategory.DISH_TYPE),
+
+    // Cuisine/ingredients
+    PASTA("Pasta", 50, TagCategory.CUISINE),
+    CURRY("Curry", 49, TagCategory.CUISINE),
+
+    // Proteins/ingredients
+    PROTEIN("Protein", 40, TagCategory.INGREDIENT),
+    TOFU("Tofu", 39, TagCategory.INGREDIENT),
+
+    // Flavor profiles
+    SPICY("Spicy", 30, TagCategory.FLAVOR),
+    SWEET("Sweet", 29, TagCategory.FLAVOR),
+    SAVORY("Savory", 28, TagCategory.FLAVOR),
+
+    // Dietary restrictions (lowest priority)
+    VEGETARIAN("Vegetarian", 20, TagCategory.DIETARY),
+    VEGAN("Vegan", 19, TagCategory.DIETARY),
+    GLUTEN_FREE("Gluten Free", 18, TagCategory.DIETARY),
+    DAIRY_FREE("Dairy Free", 17, TagCategory.DIETARY);
+
+    companion object {
+        fun sortedByPriority(tags: List<Tag>): List<Tag> =
+            tags.sortedByDescending { it.priority }
+    }
+}
+
+// Represents a category for tag grouping and organization.
+enum class TagCategory {
+    MEAL_TYPE, DISH_TYPE, CUISINE, INGREDIENT, FLAVOR, DIETARY
 }
 
 // Represents a unit of measurement for ingredients.
@@ -130,4 +173,5 @@ fun findRecipesIMade(
     return recipes.filter { recipe ->
         recipe.owner ==  Firebase.auth.currentUser?.uid
     }
+
 }

@@ -1,16 +1,22 @@
 package com.example.recipefinder.ui.createrecipe
 
 import android.annotation.SuppressLint
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,10 +25,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
@@ -40,22 +48,31 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import coil.compose.AsyncImage
+import com.example.recipefinder.data.ImageUploadService
 import com.example.recipefinder.data.Ingredient
+import com.example.recipefinder.ui.common.ImageCropDialog
 import com.example.recipefinder.data.ParsedRecipe
 import com.example.recipefinder.data.Recipe
 import com.example.recipefinder.data.RecipeViewModel
@@ -72,6 +89,7 @@ import com.example.recipefinder.ui.theme.Tertiary
 import com.example.recipefinder.ui.theme.authFieldColors
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.launch
 
 private fun reindexSteps(steps: List<Step>): List<Step> =
     steps.mapIndexed { i, step -> step.copy(index = i + 1) }
@@ -132,6 +150,7 @@ private fun AddSectionButton(text: String, onClick: () -> Unit) {
 private fun ImportChoiceDialog(
     onPasteText: () -> Unit,
     onPhoto: () -> Unit,
+    onFromLink: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -145,6 +164,14 @@ private fun ImportChoiceDialog(
                     color = Secondary,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Button(
+                    onClick = onFromLink,
+                    colors = ButtonDefaults.buttonColors(containerColor = Secondary, contentColor = Color.White),
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("From Link")
+                }
                 Button(
                     onClick = onPasteText,
                     colors = ButtonDefaults.buttonColors(containerColor = Secondary, contentColor = Color.White),
@@ -213,6 +240,74 @@ private fun PasteTextImportDialog(
 }
 
 @Composable
+private fun LinkImportDialog(
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var url by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = MaterialTheme.shapes.large,
+        title = { Text("Import from Link", color = Secondary, style = MaterialTheme.typography.titleLarge) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Enter a recipe URL. Most recipe websites use a standard format that can be imported.",
+                    color = Secondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = {
+                        url = it
+                        errorMessage = null
+                    },
+                    colors = authFieldColors(),
+                    shape = MaterialTheme.shapes.medium,
+                    placeholder = { Text("https://...") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                errorMessage?.let { error ->
+                    Text(
+                        text = error,
+                        color = Color.Red,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (isLoading) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Secondary
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = url.isNotBlank() && !isLoading,
+                colors = ButtonDefaults.buttonColors(containerColor = Secondary, contentColor = Color.White),
+                onClick = { onConfirm(url) },
+            ) {
+                Text(if (isLoading) "Loading..." else "Import")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !isLoading
+            ) {
+                Text("Cancel", color = Secondary)
+            }
+        }
+    )
+}
+
+@Composable
 private fun ConfirmOverwriteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
@@ -254,16 +349,38 @@ fun CreateRecipeScreen(
     var ingredients by remember { mutableStateOf(listOf<Ingredient>()) }
     var preparationTime by remember { mutableIntStateOf(0) }
     var steps by remember { mutableStateOf(listOf<Step>()) }
-    val imageUrl by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showCropDialog by remember { mutableStateOf(false) }
+    var isUploadingImage by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableFloatStateOf(0f) }
     var style by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf(listOf<Tag>()) }
     var showPreview by remember { mutableStateOf(false) }
 
+    val imageUploadService = remember { ImageUploadService() }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        println("Image picker callback - URI: $uri")
+        uri?.let {
+            println("Setting selectedImageUri to: $it")
+            selectedImageUri = it
+            showCropDialog = true
+        }
+    }
+
     var showImportChoiceDialog by remember { mutableStateOf(false) }
     var showPasteTextDialog by remember { mutableStateOf(false) }
     var showPhotoImportDialog by remember { mutableStateOf(false) }
+    var showLinkImportDialog by remember { mutableStateOf(false) }
     var pasteTextInitialText by remember { mutableStateOf("") }
     var pendingImport by remember { mutableStateOf<ParsedRecipe?>(null) }
+    var showImportError by remember { mutableStateOf(false) }
+
+    val recipeUrlFetcher = remember { com.example.recipefinder.data.RecipeUrlFetcher() }
+    val coroutineScope = rememberCoroutineScope()
 
     fun applyImport(parsed: ParsedRecipe) {
         title = parsed.title
@@ -348,6 +465,10 @@ fun CreateRecipeScreen(
                 }
                 if (showImportChoiceDialog) {
                     ImportChoiceDialog(
+                        onFromLink = {
+                            showImportChoiceDialog = false
+                            showLinkImportDialog = true
+                        },
                         onPasteText = {
                             showImportChoiceDialog = false
                             pasteTextInitialText = ""
@@ -358,6 +479,29 @@ fun CreateRecipeScreen(
                             showPhotoImportDialog = true
                         },
                         onDismiss = { showImportChoiceDialog = false },
+                    )
+                }
+                if (showLinkImportDialog) {
+                    LinkImportDialog(
+                        onConfirm = { url ->
+                            coroutineScope.launch {
+                                val result = recipeUrlFetcher.fetchRecipe(url)
+                                result.onSuccess { parsed ->
+                                    val hasExistingContent = title.isNotBlank() || description.isNotBlank() ||
+                                        ingredients.isNotEmpty() || steps.isNotEmpty() || style.isNotBlank() || preparationTime != 0
+                                    showLinkImportDialog = false
+                                    if (hasExistingContent) {
+                                        pendingImport = parsed
+                                    } else {
+                                        applyImport(parsed)
+                                    }
+                                }.onFailure {
+                                    showLinkImportDialog = false
+                                    showImportError = true
+                                }
+                            }
+                        },
+                        onDismiss = { showLinkImportDialog = false },
                     )
                 }
                 if (showPasteTextDialog) {
@@ -377,6 +521,28 @@ fun CreateRecipeScreen(
                         onDismiss = { showPhotoImportDialog = false },
                     )
                 }
+                if (showImportError) {
+                    AlertDialog(
+                        onDismissRequest = { showImportError = false },
+                        shape = MaterialTheme.shapes.large,
+                        title = { Text("Import Failed", color = Secondary, style = MaterialTheme.typography.titleLarge) },
+                        text = {
+                            Text(
+                                "Sorry, couldn't import the recipe from that link. The website may not have recipe data in a standard format.",
+                                color = Secondary,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                colors = ButtonDefaults.buttonColors(containerColor = Secondary, contentColor = Color.White),
+                                onClick = { showImportError = false },
+                            ) {
+                                Text("OK")
+                            }
+                        }
+                    )
+                }
                 val currentPendingImport = pendingImport
                 if (currentPendingImport != null) {
                     ConfirmOverwriteDialog(
@@ -385,6 +551,44 @@ fun CreateRecipeScreen(
                             pendingImport = null
                         },
                         onDismiss = { pendingImport = null },
+                    )
+                }
+
+                // Image Crop Dialog
+                if (showCropDialog && selectedImageUri != null) {
+                    ImageCropDialog(
+                        imageUri = selectedImageUri!!,
+                        onConfirm = { croppedBitmap ->
+                            showCropDialog = false
+                            isUploadingImage = true
+                            uploadProgress = 0f
+                            println("Starting upload of cropped image...")
+
+                            imageUploadService.uploadRecipeBitmap(
+                                bitmap = croppedBitmap,
+                                onSuccess = { downloadUrl ->
+                                    println("Upload success! URL: $downloadUrl")
+                                    imageUrl = downloadUrl
+                                    isUploadingImage = false
+                                    uploadProgress = 1f
+                                },
+                                onFailure = { exception ->
+                                    println("Image upload failed: ${exception.message}")
+                                    exception.printStackTrace()
+                                    isUploadingImage = false
+                                    uploadProgress = 0f
+                                    selectedImageUri = null
+                                },
+                                onProgress = { progress ->
+                                    println("Upload progress: $progress%")
+                                    uploadProgress = progress / 100f
+                                }
+                            )
+                        },
+                        onDismiss = {
+                            showCropDialog = false
+                            selectedImageUri = null
+                        }
                     )
                 }
 
@@ -410,6 +614,94 @@ fun CreateRecipeScreen(
                         shape = MaterialTheme.shapes.medium,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+
+                // Image Upload Section
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionLabel("Recipe Image")
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .background(Color.White.copy(alpha = 0.1f))
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.3f),
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable(enabled = !isUploadingImage) {
+                                println("Image box clicked, launching picker")
+                                imagePickerLauncher.launch("image/*")
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        println("Box recomposing - isUploading: $isUploadingImage, imageUrl: $imageUrl, selectedUri: $selectedImageUri")
+                        when {
+                            isUploadingImage -> {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        progress = { uploadProgress },
+                                        color = Color.White,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Text(
+                                        text = "${(uploadProgress * 100).toInt()}%",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                            imageUrl.isNotEmpty() -> {
+                                AsyncImage(
+                                    model = imageUrl,
+                                    contentDescription = "Recipe image",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onError = { error ->
+                                        println("Error loading uploaded image: ${error.result.throwable}")
+                                    }
+                                )
+                            }
+                            else -> {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.AddPhotoAlternate,
+                                        contentDescription = "Add photo",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Text(
+                                        text = "Tap to add image",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (imageUrl.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = {
+                                imageUrl = ""
+                                selectedImageUri = null
+                                uploadProgress = 0f
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White),
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.padding(horizontal = 2.dp))
+                            Text("Remove Image")
+                        }
+                    }
                 }
 
                 Row(
@@ -597,7 +889,7 @@ fun CreateRecipeScreen(
                     FlowRow {
                         tags.forEach {
                             RemovableChip(
-                                text = it.name.lowercase().replaceFirstChar(Char::titlecase).replace("_", " "),
+                                text = it.displayName,
                                 onClick = { tags = tags - it },
                                 onRemove = { tags = tags - it },
                             )
@@ -625,10 +917,10 @@ fun CreateRecipeScreen(
                                     .padding(8.dp)
                             )
                             Tag.entries
-                                .filter { it !in tags && it.name.contains(tagSearch, ignoreCase = true) }
+                                .filter { it !in tags && (it.name.contains(tagSearch, ignoreCase = true) || it.displayName.contains(tagSearch, ignoreCase = true)) }
                                 .forEach { tag ->
                                     DropdownMenuItem(
-                                        text = { Text(tag.name.lowercase().replaceFirstChar(Char::titlecase).replace("_", " ")) },
+                                        text = { Text(tag.displayName) },
                                         onClick = {
                                             tags = tags + tag
                                             tagSearch = ""
@@ -656,7 +948,7 @@ fun CreateRecipeScreen(
                         Text("Preview Recipe")
                     }
                     Button(
-                        enabled = isRecipeValid,
+                        enabled = isRecipeValid && !isUploadingImage,
                         onClick = {
                             onCreate(
                                 Recipe(
@@ -666,7 +958,7 @@ fun CreateRecipeScreen(
                                     ingredients = ingredients,
                                     steps = steps,
                                     preparationTime = preparationTime,
-                                    imageUrl = "",
+                                    imageUrl = imageUrl,
                                     style = style,
                                     tags = tags,
                                     owner = Firebase.auth.currentUser?.uid ?: "Anonymous"

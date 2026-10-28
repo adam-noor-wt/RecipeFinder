@@ -2,12 +2,16 @@ package com.example.recipefinder.ui.saved
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,25 +19,45 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.recipefinder.data.Recipe
 import com.example.recipefinder.data.Tag
+import com.example.recipefinder.ui.search.AddSectionButton
+import com.example.recipefinder.ui.search.IngredientChip
+
+import com.example.recipefinder.ui.search.tagLabel
 import com.example.recipefinder.ui.theme.Primary
 import com.example.recipefinder.ui.theme.RecipeFinderTheme
 
+private data class IngredientGroup(val displayName: String, val variants: Set<String>)
+private const val MAX_INGREDIENT_SUGGESTIONS = 8
+private const val INGREDIENT_NAME_CHAR_LIMIT = 24
+
+private fun groupIngredientNames(names: List<String>): List<IngredientGroup> =
+    names.groupBy { com.example.recipefinder.data.normalizeIngredientKey(it) }
+        .map { (_, variants) ->
+            val displayName = variants.groupingBy { it }.eachCount()
+                .maxByOrNull { it.value }!!.key
+            IngredientGroup(displayName, variants.toSet())
+        }
 @Composable
 fun SavedScreen(
     recipes: List<Recipe> = emptyList(),
@@ -42,21 +66,23 @@ fun SavedScreen(
 {
     val searchQuery = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     val ingredients = recipes.flatMap { it.ingredients.map { ingredient -> ingredient.name } }.distinct()
+    val ingredientGroups = androidx.compose.runtime.remember(recipes) {
+        groupIngredientNames(recipes.flatMap { it.ingredients.map { ingredient -> ingredient.name } })
+    }
     val selectedIngredients = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateListOf<String>()
+        androidx.compose.runtime.mutableStateListOf<IngredientGroup>()
+    }
+    val selectedTags = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateListOf<Tag>()
     }
     // Filter recipes based on search query and selected ingredients from detailed search
-    val filteredRecipes = if (searchQuery.value.isBlank() && selectedIngredients.size == 0) recipes
-    else if( searchQuery.value.isBlank()) recipes.filter { recipe ->
-        selectedIngredients.all { selected -> recipe.ingredients.any { ingredient -> ingredient.name == selected } }
-    }
-    else if (selectedIngredients.size == 0)
-        recipes.filter { it.title.contains(searchQuery.value, ignoreCase = true) ||
-            it.description.contains(searchQuery.value, ignoreCase = true) }
-    else recipes.filter {
-        (it.title.contains(searchQuery.value, ignoreCase = true) ||
-            it.description.contains(searchQuery.value, ignoreCase = true)) &&
-            selectedIngredients.all { selected -> it.ingredients.any { ingredient -> ingredient.name == selected } }
+    // Filter recipes based on search query, selected ingredients, and selected tags from detailed search
+    val filteredRecipes = recipes.filter { recipe ->
+        (searchQuery.value.isBlank() ||
+                recipe.title.contains(searchQuery.value, ignoreCase = true) ||
+                recipe.description.contains(searchQuery.value, ignoreCase = true)) &&
+                selectedIngredients.all { group -> recipe.ingredients.any { ingredient -> ingredient.name in group.variants } } &&
+                selectedTags.all { tag -> tag in recipe.tags }
     }
     Column {
         Column (
@@ -65,27 +91,29 @@ fun SavedScreen(
             androidx.compose.material3.OutlinedTextField(
                 value = searchQuery.value,
                 onValueChange = { searchQuery.value = it },
+                label = { Text("Search recipes") },
+                shape = RoundedCornerShape(15.dp),
                 colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.White,
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
                     focusedBorderColor = Primary,
-                    unfocusedBorderColor = androidx.compose.ui.graphics.Color.White,
-                    focusedTextColor = androidx.compose.ui.graphics.Color.Black,
-                    unfocusedTextColor = androidx.compose.ui.graphics.Color.Black,
-                    focusedLabelColor = androidx.compose.ui.graphics.Color.White,
-                    unfocusedLabelColor = androidx.compose.ui.graphics.Color.Gray
+                    unfocusedBorderColor = Color.Gray,
+                    focusedTextColor = Color.Black,
+                    unfocusedTextColor = Color.Black,
+                    focusedLabelColor = Color.White,
+                    unfocusedLabelColor = Color.Gray
                 ),
-                label = { Text("Search recipes")},
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
+
             )
             val showDetailedSearch = androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf(false)
             }
             Text(
                 text = if (showDetailedSearch.value) "Hide Detailed Search \u25B2" else "Show Detailed Search \u25BC",
-                color = androidx.compose.ui.graphics.Color.White,
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .padding(start = 12.dp, top = 4.dp, bottom = 8.dp)
@@ -97,73 +125,136 @@ fun SavedScreen(
                 enter = androidx.compose.animation.expandVertically(),
                 exit = androidx.compose.animation.shrinkVertically()
             ) {
-                // Detailed search options can be added here
-                Column {
-                    val ingredientQuery = androidx.compose.runtime.remember {
-                        androidx.compose.runtime.mutableStateOf("")
-                    }
-                    androidx.compose.material3.OutlinedTextField(
-                        value = ingredientQuery.value,
-                        onValueChange = { ingredientQuery.value = it },
-                        label = { Text("Filter ingredients", color = if (ingredientQuery.value.isNotBlank()) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Gray ) },
-                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.White,
-                            focusedBorderColor = Primary,
-                            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Gray,
-                            focusedTextColor = androidx.compose.ui.graphics.Color.Black,
-                            unfocusedTextColor = androidx.compose.ui.graphics.Color.Black
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(4.dp)
-                    )
-                    val filteredIngredients = if (ingredientQuery.value.isBlank()) ingredients
-                    else ingredients.filter {
-                        it.contains(
-                            ingredientQuery.value,
-                            ignoreCase = true
-                        )
-                    }
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        items(filteredIngredients.size) { index ->
-                            val ingredient = filteredIngredients[index]
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .padding(4.dp)
-                            ) {
-                                Checkbox(
-                                    checked = selectedIngredients.contains(ingredient),
-                                    onCheckedChange = { checked ->
-                                        if (checked) selectedIngredients.add(ingredient)
-                                        else selectedIngredients.remove(ingredient)
-                                    },
-                                    colors = androidx.compose.material3.CheckboxDefaults.colors(
-                                        checkedColor = androidx.compose.ui.graphics.Color.White,
-                                        checkmarkColor = Primary,
-                                        uncheckedColor = androidx.compose.ui.graphics.Color.White,
-                                        disabledCheckedColor = androidx.compose.ui.graphics.Color.White,
-                                        disabledUncheckedColor = androidx.compose.ui.graphics.Color.Transparent,
-                                        disabledIndeterminateColor = androidx.compose.ui.graphics.Color.White
-                                    ),
-                                )
-                                Text(
-                                    text = ingredient,
-                                    color = androidx.compose.ui.graphics.Color.White,
-                                    maxLines = 2,
-                                    textAlign = TextAlign.Center,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontSize = 12.sp
+                Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+                    if (selectedIngredients.isNotEmpty()) {
+                        FlowRow(modifier = Modifier.padding(bottom = 4.dp)) {
+                            selectedIngredients.forEach { group ->
+                                IngredientChip(
+                                    text = group.displayName,
+                                    onRemove = { selectedIngredients.remove(group) }
                                 )
                             }
                         }
                     }
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                        ) {
+                            val showIngredientMenu = androidx.compose.runtime.remember {
+                                androidx.compose.runtime.mutableStateOf(false)
+                            }
+                            Box(modifier = Modifier.padding(4.dp)) {
+                                AddSectionButton("Filter by ingredient") { showIngredientMenu.value = true }
+                                DropdownMenu(
+                                    expanded = showIngredientMenu.value,
+                                    onDismissRequest = { showIngredientMenu.value = false },
+                                    modifier = Modifier
+                                        .heightIn(max = 280.dp)
+                                        .fillMaxWidth(.7f)
+                                ) {
+                                    val ingredientQuery = androidx.compose.runtime.remember {
+                                        androidx.compose.runtime.mutableStateOf("")
+                                    }
+                                    androidx.compose.material3.OutlinedTextField(
+                                        value = ingredientQuery.value,
+                                        onValueChange = { ingredientQuery.value = it },
+                                        placeholder = { Text("Search ingredients...") },
+                                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp)
+                                    )
+                                    val suggestions = ingredientGroups
+                                        .filter { it !in selectedIngredients && it.displayName.contains(ingredientQuery.value, ignoreCase = true) }
+                                        .take(MAX_INGREDIENT_SUGGESTIONS)
+                                    if (suggestions.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("No matching ingredients", color = Color.Gray) },
+                                            onClick = {},
+                                            enabled = false
+                                        )
+                                    } else {
+                                        suggestions.forEach { suggestion ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        text = suggestion.displayName.take(INGREDIENT_NAME_CHAR_LIMIT)
+                                                            .let { if (it.length < suggestion.displayName.length) "$it…" else it },
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                },
+                                                onClick = {
+                                                    selectedIngredients.add(suggestion)
+                                                    ingredientQuery.value = ""
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (selectedTags.isNotEmpty()) {
+                                FlowRow(modifier = Modifier.padding(bottom = 4.dp)) {
+                                    selectedTags.forEach { tag ->
+                                        IngredientChip(
+                                            text = tagLabel(tag),
+                                            onRemove = { selectedTags.remove(tag) }
+                                        )
+                                    }
+                                }
+                            }
+                            val showTagMenu = androidx.compose.runtime.remember {
+                                androidx.compose.runtime.mutableStateOf(false)
+                            }
+                            Box(modifier = Modifier.padding(4.dp)) {
+                                AddSectionButton("Filter by tag") { showTagMenu.value = true }
+                                DropdownMenu(
+                                    expanded = showTagMenu.value,
+                                    onDismissRequest = { showTagMenu.value = false },
+                                    modifier = Modifier
+                                        .heightIn(max = 280.dp)
+                                        .fillMaxWidth(.7f)
+                                ) {
+                                    val tagQuery = androidx.compose.runtime.remember {
+                                        androidx.compose.runtime.mutableStateOf("")
+                                    }
+                                    androidx.compose.material3.OutlinedTextField(
+                                        value = tagQuery.value,
+                                        onValueChange = { tagQuery.value = it },
+                                        placeholder = { Text("Search tags...") },
+                                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp)
+                                    )
+                                    Tag.entries
+                                        .filter { it !in selectedTags && tagLabel(it).contains(tagQuery.value, ignoreCase = true) }
+                                        .forEach { tag ->
+                                            DropdownMenuItem(
+                                                text = { Text(tagLabel(tag)) },
+                                                onClick = {
+                                                    selectedTags.add(tag)
+                                                    tagQuery.value = ""
+                                                }
+                                            )
+                                        }
+                                }
+                            }
+                        }
+                    }
+
+
                 }
 
             }
@@ -172,7 +263,6 @@ fun SavedScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(8.dp)
-                .background(androidx.compose.ui.graphics.Color.White)
         ){
             itemsIndexed(filteredRecipes) { index, recipe ->
                 val backgroundColor = if (index % 2 == 0) Primary else androidx.compose.ui.graphics.Color.White
@@ -187,10 +277,11 @@ fun SavedScreen(
                         .padding(8.dp),
                 ) {
                     // Placeholder for image
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .background(contentColor.copy(alpha = 0.1f), shape = MaterialTheme.shapes.small)
+                    AsyncImage(
+                        model = recipe.imageUrl.ifEmpty { com.example.recipefinder.R.drawable.alfredo },
+                        contentDescription = "Recipe Image",
+                        modifier = Modifier.size(64.dp).padding(top = 2.dp, end = 2.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
                     )
 
                     Spacer(modifier = Modifier.width(16.dp))
@@ -204,11 +295,11 @@ fun SavedScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         if (recipe.tags.isNotEmpty()) {
-                            val tags: List<Tag> = recipe.tags.take(3) // Limit to 3 tags for display
+                            val tags: List<Tag> = Tag.sortedByPriority(recipe.tags).take(3) // Limit to 3 tags for display
                             Row {
                                 tags.forEach { tag ->
                                     Text(
-                                        text = tag.name.replace("_", " "),
+                                        text = tag.displayName,
                                         color = backgroundColor,
                                         style = MaterialTheme.typography.labelSmall,
                                         modifier = Modifier

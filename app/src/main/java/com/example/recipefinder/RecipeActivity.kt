@@ -38,7 +38,7 @@ import com.example.recipefinder.ui.components.RecipeFinderTabRow
 import com.example.recipefinder.ui.createrecipe.CreateRecipeScreen
 import com.example.recipefinder.ui.home.HomeScreen
 import com.example.recipefinder.ui.login.AccountServiceImpl
-import com.example.recipefinder.ui.market.MarketScreen
+import com.example.recipefinder.ui.discover.DiscoverScreen
 import com.example.recipefinder.ui.recipes.SingleRecipeScreen
 import com.example.recipefinder.ui.saved.SavedScreen
 import com.example.recipefinder.ui.search.SearchScreen
@@ -53,9 +53,8 @@ import com.google.firebase.ktx.Firebase
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-
-
-
+import com.example.recipefinder.database.updateRecipeInDatabase
+import com.example.recipefinder.ui.editrecipe.EditRecipeScreen
 
 
 fun NavHostController.navigateSingleTopTo(route: String) =
@@ -159,7 +158,14 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                         onTabSelected = { destination ->
                             fetchRecipes(database)
                             // Navigate to the selected destination
-                            navController.navigate(destination.route)
+                            // Pop everything up to start destination to clear EditRecipe, SingleRecipe, CreateRecipe
+                            navController.navigate(destination.route) {
+                                popUpTo(Home.route) {
+                                    saveState = false
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         },
                         currentScreen = currentScreen
                     )
@@ -170,7 +176,13 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
             floatingActionButton = {
                 if(auth != null && auth.currentUser != null)
                 {
-                    if(currentBackstack.value?.destination?.route != CreateRecipe.route) {
+                    val currentRoute = currentBackstack.value?.destination?.route
+                    val shouldShowFab = currentRoute != CreateRecipe.route &&
+                                       currentRoute != Settings.route &&
+                                       currentRoute != Home.route &&
+                                       currentRoute != EditRecipe.routeWithArgs &&
+                                       !currentRoute.orEmpty().startsWith(EditRecipe.route)
+                    if(shouldShowFab) {
                         FloatingActionButton(
                             onClick = { navController.navigateSingleTopTo(CreateRecipe.route) },
                             containerColor = Primary,
@@ -197,7 +209,7 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                     if (auth != null) {
                         HomeScreen(
                             auth,
-                            {navController.navigateSingleTopTo(Market.route)},
+                            {navController.navigateSingleTopTo(Discover.route)},
                             {navController.navigateSingleTopTo(Saved.route)},
                             {
                                 navController.popBackStack()
@@ -218,28 +230,57 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                     navController.navigate("${SingleRecipe.route}/${recipe.id}")
                     })
                 }
-                composable(route = Market.route) {
-                    MarketScreen(recipes.value, onRecipeClick = { recipe ->
-                        // Handle recipe click, navigate to a detailed view
-                        navController.navigate("${SingleRecipe.route}/${recipe.id}")
-                    })
+                composable(route = Discover.route) {
+                    DiscoverScreen(
+                        recipes = recipes.value,
+                        model = recipeViewModel,
+                        onRecipeClick = { recipe ->
+                            // Handle recipe click, navigate to a detailed view
+                            navController.navigate("${SingleRecipe.route}/${recipe.id}")
+                        },
+                        navigator = navController,
+                        currentSaves = savedRecipes.value
+                    )
                 }
                 composable(route = Settings.route) {
                     SettingsScreen(
+                        displayName = Firebase.auth.currentUser?.displayName,
+                        onEditDisplayName = {name -> AccountServiceImpl().editDisplayName(name,
+                            { print("hey") })},
                         signOut = {
                             AccountServiceImpl().signOut()
                             navController.popBackStack(navController.graph.startDestinationId, false)
                             navController.navigateSingleTopTo(Home.route)
-                        }
+                        },
+                        recipes = recipes.value.filter {recipe -> recipe.owner == Firebase.auth.currentUser?.uid}
+                        ,
+                        onRecipeClick = {recipe -> navController.navigate("${SingleRecipe.route}/${recipe.id}") },
+                        savedRecipes = savedRecipes.value
                     )
                 }
                 composable(route = CreateRecipe.route) {
                     CreateRecipeScreen(
                         onCreate = { recipe ->
                             // Handle recipe creation, e.g., save to database
-                            writeRecipeToDatabase(database, recipe)
-                            // Navigate to the newly created recipe's detail screen
-                            navController.navigate("${SingleRecipe.route}/${recipe.id}")
+                            writeRecipeToDatabase(
+                                database,
+                                recipe,
+                                onSuccess = { savedRecipe ->
+                                    // Add the new recipe to local state immediately
+                                    recipeViewModel.setRecipes(recipes.value + savedRecipe)
+                                    // Navigate to the newly created recipe's detail screen only after successful save
+                                    // Pop CreateRecipe from back stack to ensure fresh state on next create
+                                    navController.navigate("${SingleRecipe.route}/${savedRecipe.id}") {
+                                        popUpTo(CreateRecipe.route) {
+                                            inclusive = true
+                                        }
+                                    }
+                                },
+                                onFailure = { exception ->
+                                    // Handle failure (could show a toast/snackbar)
+                                    println("Failed to create recipe: ${exception.message}")
+                                }
+                            )
                         }
 
                     )
@@ -252,7 +293,44 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                     val recipeId = it.arguments?.getInt(SingleRecipe.recipeIdArg)
                     val recipe = recipes.value.find { it.id == recipeId }
                     recipe?.let {
-                        SingleRecipeScreen(recipe = it, model = recipeViewModel)
+                        SingleRecipeScreen(recipe = it, model = recipeViewModel, onEditClick = {recipe ->
+                            // Handle recipe click, navigate to a detailed view
+                            navController.navigate("${EditRecipe.route}/${recipe.id}")
+                        })
+                    }
+                }
+                composable(
+                    route = EditRecipe.routeWithArgs ,
+                    arguments = EditRecipe.arguments
+
+                ) {
+                    val recipeId = it.arguments?.getInt(EditRecipe.recipeIdArg)
+                    val recipe = recipes.value.find { it.id == recipeId }
+                    recipe?.let {
+                        EditRecipeScreen(recipe = it, model = recipeViewModel, onEdit = {recipe ->
+                            updateRecipeInDatabase(
+                                database,
+                                recipe,
+                                onSuccess = { updatedRecipe ->
+                                    // Update the recipe in local state immediately
+                                    val updatedList = recipes.value.map { existingRecipe ->
+                                        if (existingRecipe.id == updatedRecipe.id) updatedRecipe else existingRecipe
+                                    }
+                                    recipeViewModel.setRecipes(updatedList)
+                                    // Navigate to the recipe detail screen only after successful update
+                                    // Pop EditRecipe from back stack to prevent navigation issues
+                                    navController.navigate("${SingleRecipe.route}/${updatedRecipe.id}") {
+                                        popUpTo(EditRecipe.routeWithArgs) {
+                                            inclusive = true
+                                        }
+                                    }
+                                },
+                                onFailure = { exception ->
+                                    // Handle failure (could show a toast/snackbar)
+                                    println("Failed to update recipe: ${exception.message}")
+                                }
+                            )
+                        })
                     }
                 }
             }
