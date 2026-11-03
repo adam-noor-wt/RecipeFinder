@@ -81,7 +81,7 @@ jobs:
           git commit -m "fix(android): automatically resolved issue #${{ github.event.issue.number }} via Claude"
           
           # Authenticate using the GITHUB_TOKEN injected into the repository URL
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com{{ github.repository }}.git ${{ env.BRANCH_NAME }}
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com${{ github.repository }}.git ${{ env.BRANCH_NAME }}
 
 
       - name: Create Pull Request
