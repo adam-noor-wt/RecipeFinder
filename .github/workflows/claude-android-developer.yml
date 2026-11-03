@@ -5,9 +5,10 @@ on:
     types: [labeled]
 
 permissions:
-  contents: write
-  issues: read
-  pull-requests: write
+  contents: write      # Allows Claude to push code to a new branch
+  issues: read         # Allows Claude to read ticket details
+  pull-requests: write # Allows Claude to open the PR
+  id-token: write
 
 jobs:
   claude-android-generation:
