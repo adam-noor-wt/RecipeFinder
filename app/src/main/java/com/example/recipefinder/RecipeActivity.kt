@@ -181,6 +181,7 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                                        currentRoute != Settings.route &&
                                        currentRoute != Home.route &&
                                        currentRoute != EditRecipe.routeWithArgs &&
+                                        currentRoute != Discover.route &&
                                        !currentRoute.orEmpty().startsWith(EditRecipe.route)
                     if(shouldShowFab) {
                         FloatingActionButton(

@@ -150,6 +150,19 @@ fun AddSectionButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
+fun SuggestedSectionButton(text: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray),
+        border = BorderStroke(1.dp, Color.LightGray),
+    ) {
+        Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.padding(horizontal = 2.dp))
+        Text(text)
+    }
+}
+
+@Composable
 fun IngredientChip(text: String, onRemove: () -> Unit) {
     Card(
         modifier = Modifier.padding(4.dp),
@@ -342,7 +355,21 @@ fun SearchScreen(
                                     androidx.compose.runtime.mutableStateOf(false)
                                 }
                                 Box(modifier = Modifier.padding(4.dp)) {
-                                    AddSectionButton("Filter by tag") { showTagMenu.value = true }
+                                    Row() {
+                                        AddSectionButton("Filter by tag") { showTagMenu.value = true }
+                                        if(selectedTags.isEmpty()) {
+                                                SuggestedSectionButton("Dinner") {
+                                                    selectedTags.add(
+                                                        Tag.DINNER
+                                                    )
+                                                }
+                                                SuggestedSectionButton("Lunch") {
+                                                    selectedTags.add(
+                                                        Tag.LUNCH
+                                                    )
+                                                }
+                                            }
+                                    }
                                     DropdownMenu(
                                         expanded = showTagMenu.value,
                                         onDismissRequest = { showTagMenu.value = false },
@@ -403,7 +430,7 @@ fun SearchScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(0.9f)
-                            .clickable {  onRecipeClick(recipe) }
+                            .clickable { onRecipeClick(recipe) }
                     ) {
                         Box(
                             modifier = Modifier

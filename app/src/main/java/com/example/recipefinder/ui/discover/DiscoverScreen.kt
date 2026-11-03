@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -137,7 +138,8 @@ fun DiscoverScreen(
 )
 {
     var showHeartbreaker by remember { mutableStateOf(false) }
-    var savedRecipes: MutableList<Recipe> = mutableListOf()
+    var showHeartbreakerResults by remember { mutableStateOf(false) }
+    val heartbreakerSavedRecipes = remember { mutableStateListOf<Recipe>() }
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -158,7 +160,7 @@ fun DiscoverScreen(
                     style = Typography.headlineMedium,
                     color = Color.White,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().padding(top=5.dp)
                 )
                 Text(
                     "Find your perfect recipe in a unique and fun way",
@@ -183,11 +185,30 @@ fun DiscoverScreen(
     // Heartbreaker modal
     HeartbreakerComponent(
         recipes = recipes,
-        savedRecipes = savedRecipes,
+        savedRecipes = heartbreakerSavedRecipes,
         model = model,
         open = showHeartbreaker,
         currentSaves = currentSaves,
-        onClose = { showHeartbreaker = false }
+        onClose = {
+            showHeartbreaker = false
+        },
+        onShowResults = {
+            showHeartbreaker = false
+            showHeartbreakerResults = true
+        }
+    )
+
+    // Results modal
+    HeartbreakerResultsModal(
+        heartbreakerRecipes = heartbreakerSavedRecipes,
+        currentlySaved = currentSaves,
+        model = model,
+        open = showHeartbreakerResults,
+        onClose = {
+            showHeartbreakerResults = false
+            // Clear the list after viewing results so next game starts fresh
+            heartbreakerSavedRecipes.clear()
+        }
     )
 }
 

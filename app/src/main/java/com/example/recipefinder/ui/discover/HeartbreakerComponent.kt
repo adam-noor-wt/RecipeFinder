@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -93,7 +96,8 @@ fun HeartbreakerComponent(
     currentSaves: List<Recipe>,
     model: RecipeViewModel,
     open: Boolean,
-    onClose: () -> kotlin.Unit = {}
+    onClose: () -> kotlin.Unit = {},
+    onShowResults: () -> Unit
 ) {
 
     // Recipe queue management
@@ -101,9 +105,17 @@ fun HeartbreakerComponent(
     val availableRecipes = remember<List<Recipe>>(recipes, currentSaves) {
         recipes.shuffled().filter{recipe -> !currentSaves.any{it.id == recipe.id}}
     }
-    val currentRecipe = if (currentRecipeIndex < availableRecipes.size && availableRecipes.isNotEmpty()) {
-        availableRecipes[currentRecipeIndex]
-    } else null
+
+    // Create a stable reference to get recipe at a given index
+    val getRecipeAtIndex: (Int) -> Recipe? = { index ->
+        if (index < availableRecipes.size && availableRecipes.isNotEmpty()) {
+            availableRecipes[index]
+        } else null
+    }
+
+    val currentRecipe = getRecipeAtIndex(currentRecipeIndex)?.also {
+        println("HeartbreakerComponent: currentRecipe at index $currentRecipeIndex is ${it.id}:${it.title}")
+    }
 
     // Swipe gesture state
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -162,6 +174,7 @@ fun HeartbreakerComponent(
     }
 
     fun moveToNextRecipe() {
+        println("HeartbreakerComponent: moveToNextRecipe called. Index $currentRecipeIndex -> ${currentRecipeIndex + 1}")
         currentRecipeIndex++
         offsetX = 0f
         rotation = 0f
@@ -169,18 +182,12 @@ fun HeartbreakerComponent(
         showBottomSheet = false
     }
 
-    suspend fun handleSwipeCommit() {
+    suspend fun handleSwipeCommit(recipeToSave: Recipe?) {
         val direction = if (offsetX > 0) 1f else -1f
+        println("HeartbreakerComponent: handleSwipeCommit - received recipe: ${recipeToSave?.id}:${recipeToSave?.title}")
 
         // Animate card exit
         animateCardExit(direction)
-
-        // Perform action
-        if (direction > 0) {
-            // Save recipe
-            currentRecipe?.let { savedRecipes.add(it) }
-        }
-        // For left swipe (discard), no action needed
 
         // Wait for animation
         delay(300)
@@ -191,6 +198,22 @@ fun HeartbreakerComponent(
         // Reset animations
         animatedOffsetX.snapTo(0f)
         animatedRotation.snapTo(0f)
+
+        // Perform action AFTER moving to next (using captured recipe)
+        if (direction > 0) {
+            // Save recipe (avoid duplicates)
+            recipeToSave?.let { recipe ->
+                println("HeartbreakerComponent: Attempting to save recipe ${recipe.id} '${recipe.title}'")
+                println("HeartbreakerComponent: Current list has ${savedRecipes.size} recipes: ${savedRecipes.map { "${it.id}:${it.title}" }}")
+                val alreadyExists = savedRecipes.any { it.id == recipe.id }
+                println("HeartbreakerComponent: Already exists? $alreadyExists")
+                if (!alreadyExists) {
+                    savedRecipes.add(recipe)
+                    println("HeartbreakerComponent: Added! List now has ${savedRecipes.size} recipes")
+                }
+            }
+        }
+        // For left swipe (discard), no action needed
     }
 
     if (open) {
@@ -200,105 +223,120 @@ fun HeartbreakerComponent(
                 .fillMaxWidth()
                 .background(color = Primary.copy(alpha = 0.8f))
                 .clickable { onClose() },
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
-            // Main content area - prevent click-through to background
-            Box(
-                modifier = Modifier.clickable(enabled = false) { },
-                contentAlignment = Alignment.Center
-            ) {
-                if (currentRecipe == null) {
-                    // Empty state
-                    EmptyStateCard()
-                } else {
-                    // Swipeable card stack
-                    Box(
-                        modifier = Modifier
-                            .width(350.dp)
-                            .height(400.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // Action indicators (behind card)
-                        if (isSwipingLeft) {
-                            DiscardIndicator(swipeProgress)
-                        }
-                        if (isSwipingRight) {
-                            SaveIndicator(swipeProgress)
-                        }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Main content area - prevent click-through to background
+                Box(
+                    modifier = Modifier.clickable(enabled = false) { },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (currentRecipe == null) {
+                        // Empty state
+                        EmptyStateCard()
+                    } else {
+                        // Swipeable card stack
+                        Box(
+                            modifier = Modifier
+                                .width(350.dp)
+                                .height(400.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Action indicators (behind card)
+                            if (isSwipingLeft) {
+                                DiscardIndicator(swipeProgress)
+                            }
+                            if (isSwipingRight) {
+                                SaveIndicator(swipeProgress)
+                            }
 
-                        // The recipe card
-                        RecipeCard(
-                            recipe = currentRecipe,
-                            offsetX = offsetX + animatedOffsetX.value,
-                            rotation = rotation + animatedRotation.value,
-                            isCardSwipeEnabled = isCardSwipeEnabled,
-                            isDragging = isDragging,
-                            onDragStart = {
-                                isDragging = true
-                                dragStartTime = System.currentTimeMillis()
-                            },
-                            onDrag = { dragAmount ->
-                                offsetX += dragAmount
-                                rotation = (offsetX / 20f).coerceIn(-15f, 15f)
-                            },
-                            onDragEnd = {
-                                coroutineScope.launch {
-                                    val dragDuration = System.currentTimeMillis() - dragStartTime
-                                    val dragDistance = abs(offsetX)
+                            // The recipe card
+                            RecipeCard(
+                                recipe = currentRecipe,
+                                offsetX = offsetX + animatedOffsetX.value,
+                                rotation = rotation + animatedRotation.value,
+                                isCardSwipeEnabled = isCardSwipeEnabled,
+                                isDragging = isDragging,
+                                onDragStart = {
+                                    isDragging = true
+                                    dragStartTime = System.currentTimeMillis()
+                                },
+                                onDrag = { dragAmount ->
+                                    offsetX += dragAmount
+                                    rotation = (offsetX / 20f).coerceIn(-15f, 15f)
+                                },
+                                onDragEnd = {
+                                    // Capture the INDEX and look up recipe from stable list
+                                    val indexAtSwipeTime = currentRecipeIndex
+                                    val recipeAtSwipeTime = getRecipeAtIndex(indexAtSwipeTime)
+                                    println("HeartbreakerComponent: onDragEnd - captured index $indexAtSwipeTime, recipe ${recipeAtSwipeTime?.id}:${recipeAtSwipeTime?.title}")
+                                    coroutineScope.launch {
+                                        val dragDuration =
+                                            System.currentTimeMillis() - dragStartTime
+                                        val dragDistance = abs(offsetX)
 
-                                    // Distinguish tap from swipe
-                                    if (dragDuration < 100 && dragDistance < 10f) {
-                                        showBottomSheet = true
-                                        resetCardPosition()
-                                    } else if (dragDistance > SWIPE_THRESHOLD) {
-                                        handleSwipeCommit()
-                                    } else {
+                                        // Distinguish tap from swipe
+                                        if (dragDuration < 100 && dragDistance < 10f) {
+                                            showBottomSheet = true
+                                            resetCardPosition()
+                                        } else if (dragDistance > SWIPE_THRESHOLD) {
+                                            handleSwipeCommit(recipeAtSwipeTime)
+                                        } else {
+                                            resetCardPosition()
+                                        }
+                                    }
+                                    isDragging = false
+                                },
+                                onDragCancel = {
+                                    coroutineScope.launch {
                                         resetCardPosition()
                                     }
+                                    isDragging = false
+                                },
+                                onTap = {
+                                    if (!isDragging && isCardSwipeEnabled) {
+                                        showBottomSheet = true
+                                    }
                                 }
-                                isDragging = false
-                            },
-                            onDragCancel = {
-                                coroutineScope.launch {
-                                    resetCardPosition()
-                                }
-                                isDragging = false
-                            },
-                            onTap = {
-                                if (!isDragging && isCardSwipeEnabled) {
-                                    showBottomSheet = true
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Bottom sheet for recipe details
-            if (showBottomSheet && currentRecipe != null) {
-                ModalBottomSheet(
-                    onDismissRequest = { showBottomSheet = false },
-                    sheetState = bottomSheetState,
-                    modifier = Modifier.fillMaxHeight(0.9f),
-                    dragHandle = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(vertical = 12.dp)
-                                    .width(40.dp)
-                                    .height(4.dp)
-                                    .background(
-                                        color = Color.Gray,
-                                        shape = RoundedCornerShape(2.dp)
-                                    )
                             )
                         }
                     }
-                ) {
-                    RecipeDetailsContent(recipe = currentRecipe)
+                }
+
+                // Bottom sheet for recipe details
+                if (showBottomSheet && currentRecipe != null) {
+                    ModalBottomSheet(
+                        onDismissRequest = { showBottomSheet = false },
+                        sheetState = bottomSheetState,
+                        modifier = Modifier.fillMaxHeight(0.9f),
+                        dragHandle = {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(vertical = 12.dp)
+                                        .width(40.dp)
+                                        .height(4.dp)
+                                        .background(
+                                            color = Color.Gray,
+                                            shape = RoundedCornerShape(2.dp)
+                                        )
+                                )
+                            }
+                        }
+                    ) {
+                        RecipeDetailsContent(recipe = currentRecipe)
+                    }
+                }
+                Button(
+                    colors = ButtonColors(Secondary, Color.White, Color.Gray, Color.Gray),
+                    onClick = {
+                    onShowResults()
+                    onClose()
+                }) {
+                    Text("Done")
                 }
             }
         }
@@ -636,7 +674,7 @@ fun RecipeDetailsContent(recipe: Recipe) {
     }
 }
 
-@SuppressLint("ViewModelConstructorInComposable")
+@SuppressLint("ViewModelConstructorInComposable", "UnrememberedMutableState")
 @Preview(showBackground = true)
 @Composable
 fun HeartbreakerComponentPreview() {
@@ -665,7 +703,8 @@ fun HeartbreakerComponentPreview() {
             savedRecipes = mutableListOf(),
             model = RecipeViewModel(),
             currentSaves = listOf(),
-            open = true
+            open = true,
+            onShowResults = {  }
         )
     }
 }
