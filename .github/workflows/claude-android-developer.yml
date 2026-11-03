@@ -40,13 +40,13 @@ jobs:
           git checkout -b $BRANCH_NAME
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
-      # This step uses a custom node/python script or a dedicated action to pass context to Claude
+      # Ask Claude to Resolve the Android Issue using the official repository
       - name: Ask Claude to Resolve Android Issue
         id: claude-agent
-        uses: anthropic-ai/claude-engineer-action@v1 
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: 'claude-3-5-sonnet-latest'
           prompt: |
             You are an autonomous Senior Android Developer. Your task is to resolve the following GitHub Issue.
             
@@ -57,6 +57,8 @@ jobs:
             1. Search for the relevant Kotlin/Java source files, layout XMLs, or build.gradle files.
             2. Implement the complete solution requested in the issue.
             3. Ensure your changes compile cleanly via Gradle. Do not break existing architectures or dependencies.
+          # This flag allows Claude to safely write code to files headlessly in CI
+          acknowledge-dangerously-skip-permissions-responsibility: "true"
 
       # Compile and verify Claude's changes with local Android unit tests
       - name: Compile and Run Unit Tests
