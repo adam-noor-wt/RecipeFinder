@@ -45,9 +45,8 @@ jobs:
       - name: Ask Claude to Resolve Android Issue
         id: claude-agent
         uses: anthropics/claude-code-action@v1
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
+          claude_code_oauth_token: ${{secrets.FUELIX_API_KEY}}
           show_full_output: true
           prompt: |
             You are an autonomous Senior Android Developer. Your task is to resolve the following GitHub Issue.
