@@ -48,6 +48,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
+          show_full_output: true
           prompt: |
             You are an autonomous Senior Android Developer. Your task is to resolve the following GitHub Issue.
             
