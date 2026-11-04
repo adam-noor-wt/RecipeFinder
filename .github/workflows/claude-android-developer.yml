@@ -19,7 +19,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Android projects require Java
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -27,11 +26,9 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # Makes sure the gradlew execution script is executable
       - name: Grant Execute Permission for Gradle
         run: chmod +x ./gradlew
 
-      # Run unit tests before Claude touches anything to ensure a healthy baseline
       - name: Run Baseline Local Unit Tests
         run: ./gradlew testDebugUnitTest --continue || echo "Baseline tests failed or don't exist"
 
@@ -41,7 +38,14 @@ jobs:
           git checkout -b $BRANCH_NAME
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
-      # Ask Claude to Resolve the Android Issue using the official repository
+      - name: Initialize Claude Notes
+        # Kept outside the workspace so `git add -A` never commits them
+        run: |
+          echo "NOTES_FILE=$RUNNER_TEMP/claude-notes.md" >> "$GITHUB_ENV"
+          echo "TEST_LOG=$RUNNER_TEMP/test-output.log" >> "$GITHUB_ENV"
+          echo "## Claude Notes" > "$RUNNER_TEMP/claude-notes.md"
+
+      # ---- Attempt 1: implement the issue ----
       - name: Ask Claude to Resolve Android Issue
         id: claude-agent
         uses: anthropics/claude-code-action@v1
@@ -54,22 +58,69 @@ jobs:
             --permission-mode bypassPermissions
           prompt: |
             You are an autonomous Senior Android Developer. Your task is to resolve the following GitHub Issue.
-            
+
             Issue Title: ${{ github.event.issue.title }}
             Issue Body: ${{ github.event.issue.body }}
-            
+
             Guidelines:
             1. Search for the relevant Kotlin/Java source files, layout XMLs, or build.gradle files.
             2. Implement the complete solution requested in the issue.
             3. Ensure your changes compile cleanly via Gradle. Do not break existing architectures or dependencies.
-          # This flag allows Claude to safely write code to files headlessly in CI
+
+            Notes: before finishing, append a concise section to ${{ runner.temp }}/claude-notes.md
+            titled "### Implementation". Use short bullets, only under these headings, and omit any heading with nothing to say:
+            - **Decisions** – choices you made that the issue did not specify
+            - **Issues** – problems you ran into and how you handled them
+            - **Please check** – things a human reviewer should verify
+            Do not put this file inside the repository.
           acknowledge-dangerously-skip-permissions-responsibility: "true"
 
-      # Compile and verify Claude's changes with local Android unit tests
       - name: Compile and Run Unit Tests
+        id: tests
+        continue-on-error: true
         run: |
-          ./gradlew compileDebugSources
-          ./gradlew testDebugUnitTest
+          set -o pipefail
+          { ./gradlew compileDebugSources && ./gradlew testDebugUnitTest; } 2>&1 | tee "$TEST_LOG"
+
+      # ---- Attempt 2: only if tests failed; one debug pass ----
+      - name: Ask Claude to Debug Failing Tests
+        id: claude-debug
+        if: steps.tests.outcome == 'failure'
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.fuelix.ai
+        with:
+          claude_code_oauth_token: ${{secrets.FUELIX_API_KEY}}
+          show_full_output: true
+          claude_args: |
+            --permission-mode bypassPermissions
+          prompt: |
+            Your previous changes for this GitHub Issue caused the Gradle build/tests to fail.
+
+            Issue Title: ${{ github.event.issue.title }}
+            Issue Body: ${{ github.event.issue.body }}
+
+            The full Gradle output is in ${{ runner.temp }}/test-output.log. Read it (start with the
+            end of the file and any "FAILED" / "error:" lines, and check build/reports and
+            build/test-results for detailed reports).
+
+            1. Identify the root cause and fix it in the source. Do NOT delete, skip, or weaken
+               tests just to make them pass, unless a test is genuinely wrong given the issue.
+            2. Re-run `./gradlew compileDebugSources testDebugUnitTest` yourself to confirm.
+            3. You only get this one attempt.
+
+            Notes: append a concise section to ${{ runner.temp }}/claude-notes.md titled
+            "### Test failure debugging" with short bullets under **Decisions**, **Issues**
+            (include the root cause), and **Please check**. Omit empty headings.
+          acknowledge-dangerously-skip-permissions-responsibility: "true"
+
+      # Second failure fails the workflow (no continue-on-error here)
+      - name: Re-run Unit Tests After Debug
+        id: tests-retry
+        if: steps.tests.outcome == 'failure'
+        run: |
+          set -o pipefail
+          { ./gradlew compileDebugSources && ./gradlew testDebugUnitTest; } 2>&1 | tee "$TEST_LOG"
 
       - name: Commit and Push Changes
         env:
@@ -83,7 +134,6 @@ jobs:
 
           git add -A
 
-          # Skip cleanly if Claude made no changes (git commit exits 1 otherwise)
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
@@ -91,10 +141,10 @@ jobs:
 
           git commit -m "fix(android): automatically resolved issue #${ISSUE_NUMBER} via Claude"
 
-          # Fall back to the current branch if BRANCH_NAME wasn't set earlier
           BRANCH="${BRANCH_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
 
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/${BRANCH}"
+
       - name: Create Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -115,8 +165,35 @@ jobs:
             exit 0
           fi
 
+          {
+            echo "This PR was automatically generated by Claude to resolve Android issue #${ISSUE_NUMBER}."
+            if [ "${{ steps.tests.outcome }}" = "failure" ]; then
+              echo
+              echo "> Tests failed on the first attempt; Claude made one debugging pass and tests then passed."
+            fi
+            echo
+            cat "$NOTES_FILE"
+          } > "${RUNNER_TEMP}/pr-body.md"
+
           gh pr create \
             --title "Closes #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
-            --body "This PR was automatically generated by Claude to resolve Android issue #${ISSUE_NUMBER}." \
+            --body-file "${RUNNER_TEMP}/pr-body.md" \
             --head "$BRANCH" \
             --base "$BASE_BRANCH"
+
+      # Always append Claude's notes to the workflow run summary, even on failure
+      - name: Append Claude Notes to Workflow Summary
+        if: always()
+        run: |
+          if [ -f "$NOTES_FILE" ]; then
+            cat "$NOTES_FILE" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.tests-retry.outcome }}" = "failure" ]; then
+            {
+              echo
+              echo "### ‼️ Tests still failing after debug attempt"
+              echo '```'
+              tail -n 60 "$TEST_LOG"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
