@@ -25,6 +25,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,6 +50,7 @@ import com.example.recipefinder.ui.search.IngredientChip
 import com.example.recipefinder.ui.search.tagLabel
 import com.example.recipefinder.ui.theme.Primary
 import com.example.recipefinder.ui.theme.RecipeFinderTheme
+import com.example.recipefinder.ui.theme.Secondary
 
 private data class IngredientGroup(val displayName: String, val variants: Set<String>)
 private const val MAX_INGREDIENT_SUGGESTIONS = 8
@@ -375,8 +378,16 @@ fun SavedScreen(
         androidx.compose.material3.TabRow(
             selectedTabIndex = selectedTab,
             containerColor = Primary,
-            contentColor = Color.White
+            contentColor = Color.White,
+            indicator = { tabPositions ->
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                        color = Secondary
+                    )
+
+            }
         ) {
+
             listOf("All Recipes", "Folders").forEachIndexed { index, title ->
                 androidx.compose.material3.Tab(
                     selected = selectedTab == index,
@@ -413,12 +424,8 @@ private fun FolderListTab(
     onCreateFolder: (String) -> Unit
 ) {
     var showCreate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-        androidx.compose.material3.Button(
-            onClick = { showCreate = true },
-            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Primary)
-        ) { Text("New Folder", color = Color.White) }
-        Spacer(modifier = Modifier.height(8.dp))
+    Column(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+
         if (folders.isEmpty()) {
             Text("No folders yet. Create one (e.g. Dinner, Lunch, Sweets, Favorites).", color = Color.Gray)
         }
@@ -447,6 +454,11 @@ private fun FolderListTab(
                 }
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        androidx.compose.material3.Button(
+            onClick = { showCreate = true },
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Primary)
+        ) { Text("New Folder", color = Color.White) }
     }
     if (showCreate) {
         var newName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
