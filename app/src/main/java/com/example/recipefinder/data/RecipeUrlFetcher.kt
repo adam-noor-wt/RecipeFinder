@@ -150,16 +150,19 @@ class RecipeUrlFetcher {
                     unitStr.startsWith("cup") -> Unit.CUP
                     unitStr.startsWith("tsp") || unitStr.startsWith("teaspoon") -> Unit.TEASPOON
                     unitStr.startsWith("tbsp") || unitStr.startsWith("tablespoon") -> Unit.TABLESPOON
-                    unitStr.startsWith("g") || unitStr == "gram" || unitStr == "grams" -> Unit.GRAM
+                    unitStr == "g" || unitStr.startsWith("gram") -> Unit.GRAM
                     unitStr.startsWith("ml") || unitStr.startsWith("milliliter") -> Unit.MILLILITER
-                    unitStr.startsWith("l") || unitStr == "liter" || unitStr == "liters" -> Unit.LITER
+                    unitStr == "l" || unitStr.startsWith("liter") || unitStr.startsWith("litre") -> Unit.LITER
                     unitStr.startsWith("pinch") || unitStr.startsWith("dash") -> Unit.DASH
                     unitStr.startsWith("whole") -> Unit.WHOLE
                     else -> Unit.PIECE
                 }
 
                 // The rest is the ingredient name
-                if (parts.size >= 3) {
+                if (parts.size >= 3 && unit == Unit.PIECE && unitStr != "piece" && unitStr != "pieces") {
+                    // Unit wasn't recognized, keep it as part of the name
+                    name = parts.drop(1).joinToString(" ")
+                } else if (parts.size >= 3) {
                     name = parts[2]
                 } else if (unit == Unit.PIECE) {
                     // Unit wasn't recognized, so include it in the name
