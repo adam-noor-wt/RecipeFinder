@@ -1,0 +1,263 @@
+name: Claude Developer Agent
+
+# Language-specific settings live in repository variables (Settings > Secrets and variables > Actions > Variables):
+#   TEST_COMMAND     (required)  e.g. ./gradlew testDebugUnitTest | npm test | pytest
+#   BUILD_COMMAND    (optional)  e.g. ./gradlew compileDebugSources
+#   SETUP_COMMAND    (optional)  e.g. chmod +x ./gradlew | npm ci
+#   JAVA_VERSION / NODE_VERSION / PYTHON_VERSION (optional)  runtimes to install
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  # ---- 1. Claude implements the issue and pushes a branch ----
+  implement:
+    if: github.event.label.name == 'claude-bot'
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.branch.outputs.name }}
+      changed: ${{ steps.push.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          java-version: ${{ vars.JAVA_VERSION }}
+          node-version: ${{ vars.NODE_VERSION }}
+          python-version: ${{ vars.PYTHON_VERSION }}
+          setup-command: ${{ vars.SETUP_COMMAND }}
+
+      - name: Create branch
+        id: branch
+        run: |
+          BRANCH="claude-fix-issue-${{ github.event.issue.number }}"
+          git checkout -b "$BRANCH"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Ask Claude to resolve the issue
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.fuelix.ai
+        with:
+          claude_code_oauth_token: ${{ secrets.FUELIX_API_KEY }}
+          show_full_output: true
+          claude_args: |
+            --permission-mode bypassPermissions
+          prompt: |
+            You are an autonomous Senior Software Engineer. Your task is to resolve the following GitHub Issue.
+
+            Issue Title: ${{ github.event.issue.title }}
+            Issue Body: ${{ github.event.issue.body }}
+
+            Guidelines:
+            1. Explore the repository to find the relevant source, config, and build files.
+            2. Implement the complete solution requested in the issue.
+            3. Make sure the project builds and its tests pass using the project's own tooling.
+               Build command (may be empty): ${{ vars.BUILD_COMMAND }}
+               Test command: ${{ vars.TEST_COMMAND }}
+               Do not break existing architecture or dependencies.
+
+            Notes: before finishing, write a concise file at ${{ runner.temp }}/claude-notes.md
+            starting with "### Implementation". Use short bullets, only under these headings, and omit empty ones:
+            - **Decisions** - choices you made that the issue did not specify
+            - **Issues** - problems you ran into and how you handled them
+            - **Please check** - things a human reviewer should verify
+            Do not put this file inside the repository.
+          acknowledge-dangerously-skip-permissions-responsibility: "true"
+
+      - name: Commit and push
+        id: push
+        run: |
+          git config user.name "claude-bot[bot]"
+          git config user.email "claude-bot[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "fix: automatically resolved issue #${{ github.event.issue.number }} via Claude"
+          git push origin "HEAD:refs/heads/${{ steps.branch.outputs.name }}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notes-implement
+          path: ${{ runner.temp }}/claude-notes.md
+          if-no-files-found: ignore
+
+  # ---- 2. Build + test (reusable workflow) ----
+  test:
+    needs: implement
+    if: needs.implement.outputs.changed == 'true'
+    uses: ./.github/workflows/test-program.yml
+    with:
+      ref: ${{ needs.implement.outputs.branch }}
+      log-name: test-log
+      build-command: ${{ vars.BUILD_COMMAND }}
+      test-command: ${{ vars.TEST_COMMAND }}
+      setup-command: ${{ vars.SETUP_COMMAND }}
+      java-version: ${{ vars.JAVA_VERSION }}
+      node-version: ${{ vars.NODE_VERSION }}
+      python-version: ${{ vars.PYTHON_VERSION }}
+
+  # ---- 3. Only if tests failed: one debugging pass ----
+  debug:
+    needs: [implement, test]
+    if: needs.test.outputs.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.implement.outputs.branch }}
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          java-version: ${{ vars.JAVA_VERSION }}
+          node-version: ${{ vars.NODE_VERSION }}
+          python-version: ${{ vars.PYTHON_VERSION }}
+          setup-command: ${{ vars.SETUP_COMMAND }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-log
+          path: ${{ runner.temp }}/logs
+
+      - name: Ask Claude to debug the failing tests
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: https://api.fuelix.ai
+        with:
+          claude_code_oauth_token: ${{ secrets.FUELIX_API_KEY }}
+          show_full_output: true
+          claude_args: |
+            --permission-mode bypassPermissions
+          prompt: |
+            Your previous changes for this GitHub Issue caused the build/tests to fail.
+
+            Issue Title: ${{ github.event.issue.title }}
+            Issue Body: ${{ github.event.issue.body }}
+
+            The full output is in ${{ runner.temp }}/logs/test-output.log. Read it (start from the end
+            and look for failures/errors; check any generated test reports too).
+
+            1. Identify the root cause and fix it in the source. Do NOT delete, skip, or weaken
+               tests just to make them pass, unless a test is genuinely wrong given the issue.
+            2. Re-run to confirm. Build command (may be empty): ${{ vars.BUILD_COMMAND }}
+               Test command: ${{ vars.TEST_COMMAND }}
+            3. You only get this one attempt.
+
+            Notes: write a concise file at ${{ runner.temp }}/claude-notes.md starting with
+            "### Test failure debugging", with short bullets under **Decisions**, **Issues**
+            (include the root cause), and **Please check**. Omit empty headings.
+          acknowledge-dangerously-skip-permissions-responsibility: "true"
+
+      - name: Commit and push fix
+        run: |
+          git config user.name "claude-bot[bot]"
+          git config user.email "claude-bot[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Claude made no changes."
+            exit 0
+          fi
+          git commit -m "fix: address failing tests for issue #${{ github.event.issue.number }}"
+          git push origin "HEAD:refs/heads/${{ needs.implement.outputs.branch }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notes-debug
+          path: ${{ runner.temp }}/claude-notes.md
+          if-no-files-found: ignore
+
+  # ---- 4. Re-test; a second failure fails the workflow ----
+  retest:
+    needs: [implement, debug]
+    if: needs.debug.result == 'success'
+    uses: ./.github/workflows/test-program.yml
+    with:
+      ref: ${{ needs.implement.outputs.branch }}
+      log-name: test-log-retest
+      fail-on-error: true
+      build-command: ${{ vars.BUILD_COMMAND }}
+      test-command: ${{ vars.TEST_COMMAND }}
+      setup-command: ${{ vars.SETUP_COMMAND }}
+      java-version: ${{ vars.JAVA_VERSION }}
+      node-version: ${{ vars.NODE_VERSION }}
+      python-version: ${{ vars.PYTHON_VERSION }}
+
+  # ---- 5. Open the PR once tests pass (first try or after debug) ----
+  pull-request:
+    needs: [implement, test, debug, retest]
+    if: >-
+      always() && needs.implement.outputs.changed == 'true' &&
+      (needs.test.outputs.result == 'success' || needs.retest.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.implement.outputs.branch }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: notes-*
+          path: ${{ runner.temp }}/notes
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ needs.implement.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          RETRIED: ${{ needs.test.outputs.result == 'failure' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh pr list --head "$BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number')" ]; then
+            echo "PR already exists for $BRANCH."; exit 0
+          fi
+          {
+            echo "This PR was automatically generated by Claude to resolve issue #${ISSUE_NUMBER}."
+            if [ "$RETRIED" = "true" ]; then
+              echo; echo "> Tests failed on the first attempt; Claude made one debugging pass and tests then passed."
+            fi
+            echo; echo "## Claude Notes"
+            cat "$RUNNER_TEMP"/notes/*/claude-notes.md 2>/dev/null || echo "_No notes left._"
+          } > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --title "Closes #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
+            --body-file "$RUNNER_TEMP/pr-body.md" --head "$BRANCH" --base "$BASE_BRANCH"
+
+  # ---- 6. Always append notes (and the failure log, if any) to the run summary ----
+  summary:
+    needs: [implement, test, debug, retest]
+    if: always() && needs.implement.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          path: ${{ runner.temp }}/art
+
+      - name: Write summary
+        env:
+          RETEST_RESULT: ${{ needs.retest.result }}
+        run: |
+          echo "## Claude Notes" >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP"/art/notes-*/claude-notes.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null \
+            || echo "_No notes left._" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RETEST_RESULT" = "failure" ]; then
+            {
+              echo; echo "### Tests still failing after debug attempt"
+              echo '```'; tail -n 60 "$RUNNER_TEMP/art/test-log-retest/test-output.log"; echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

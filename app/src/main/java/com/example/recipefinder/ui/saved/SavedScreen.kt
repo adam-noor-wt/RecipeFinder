@@ -464,9 +464,25 @@ private fun FolderListTab(
         var newName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
         val trimmed = newName.trim()
         val duplicate = folders.keys.any { it.equals(trimmed, ignoreCase = true) }
+        val fieldColors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedBorderColor = Color.White,
+            unfocusedBorderColor = Color.White.copy(alpha = 0.6f),
+            focusedLabelColor = Color.White,
+            unfocusedLabelColor = Color.White.copy(alpha = 0.8f),
+            cursorColor = Color.White,
+            errorTextColor = Color.White,
+            errorBorderColor = Color.White,
+            errorLabelColor = Color.White,
+            errorSupportingTextColor = Color.White,
+            errorCursorColor = Color.White
+        )
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showCreate = false },
-            title = { Text("New Folder") },
+            containerColor = Primary,
+            shape = RoundedCornerShape(16.dp),
+            title = { Text("New Folder", color = Color.White, style = MaterialTheme.typography.headlineSmall) },
             text = {
                 androidx.compose.material3.OutlinedTextField(
                     value = newName,
@@ -474,17 +490,27 @@ private fun FolderListTab(
                     label = { Text("Folder name") },
                     singleLine = true,
                     isError = duplicate,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = fieldColors,
                     supportingText = { if (duplicate) Text("A folder with this name already exists") }
                 )
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(
+                androidx.compose.material3.Button(
                     enabled = trimmed.isNotEmpty() && !duplicate,
-                    onClick = { onCreateFolder(trimmed); showCreate = false }
+                    onClick = { onCreateFolder(trimmed); showCreate = false },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Primary,
+                        disabledContainerColor = Color.White.copy(alpha = 0.4f),
+                        disabledContentColor = Primary.copy(alpha = 0.6f)
+                    )
                 ) { Text("Create") }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text("Cancel") }
+                androidx.compose.material3.TextButton(onClick = { showCreate = false }) {
+                    Text("Cancel", color = Color.White)
+                }
             }
         )
     }
@@ -529,37 +555,12 @@ private fun FolderDetail(
         val selected = androidx.compose.runtime.remember {
             androidx.compose.runtime.mutableStateListOf<Int>().apply { addAll(recipeIds) }
         }
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showPicker = false },
-            title = { Text("Recipes in $name") },
-            text = {
-                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
-                    itemsIndexed(allRecipes) { _, recipe ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                if (recipe.id in selected) selected.remove(recipe.id) else selected.add(recipe.id)
-                            }
-                        ) {
-                            Checkbox(
-                                checked = recipe.id in selected,
-                                onCheckedChange = {
-                                    if (it) selected.add(recipe.id) else selected.remove(recipe.id)
-                                }
-                            )
-                            Text(recipe.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    onChanged(selected.toList()); showPicker = false
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showPicker = false }) { Text("Cancel") }
-            }
+        FolderRecipePicker(
+            name = name,
+            allRecipes = allRecipes,
+            selected = selected,
+            onDismiss = { showPicker = false },
+            onSave = { onChanged(selected.toList()); showPicker = false }
         )
     }
     if (confirmDelete) {
@@ -574,5 +575,144 @@ private fun FolderDetail(
                 androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun FolderRecipePicker(
+    name: String,
+    allRecipes: List<Recipe>,
+    selected: androidx.compose.runtime.snapshots.SnapshotStateList<Int>,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.85f)
+                .background(Color.White, shape = RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Recipes in $name",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Primary,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Text(
+                text = "Tap recipes to add or remove them",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "${selected.size} of ${allRecipes.size} selected",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+            if (allRecipes.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("No saved recipes to add yet.", color = Color.Gray)
+                }
+            } else {
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    itemsIndexed(allRecipes) { index, recipe ->
+                        val isSelected = recipe.id in selected
+                        val backgroundColor = if (index % 2 == 0) Primary else Color.White
+                        val contentColor = if (index % 2 == 0) Color.White else Primary
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(5.dp, shape = MaterialTheme.shapes.medium, ambientColor = Color.Black, spotColor = Color.Black)
+                                .background(backgroundColor, shape = MaterialTheme.shapes.medium)
+                                .clickable {
+                                    if (isSelected) selected.remove(recipe.id) else selected.add(recipe.id)
+                                }
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AsyncImage(
+                                model = recipe.imageUrl.ifEmpty { com.example.recipefinder.R.drawable.alfredo },
+                                contentDescription = "Recipe Image",
+                                modifier = Modifier.size(64.dp).padding(top = 2.dp, end = 2.dp),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = recipe.title,
+                                    color = contentColor,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (recipe.tags.isNotEmpty()) {
+                                    Row {
+                                        Tag.sortedByPriority(recipe.tags).take(3).forEach { tag ->
+                                            Text(
+                                                text = tag.displayName,
+                                                color = backgroundColor,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                modifier = Modifier
+                                                    .padding(end = 6.dp)
+                                                    .background(contentColor.copy(alpha = 0.9f), shape = MaterialTheme.shapes.extraSmall)
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = recipe.description,
+                                    color = contentColor.copy(alpha = 0.85f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = {
+                                    if (it) selected.add(recipe.id) else selected.remove(recipe.id)
+                                },
+                                colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                    checkedColor = contentColor,
+                                    checkmarkColor = backgroundColor,
+                                    uncheckedColor = contentColor
+                                )
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                androidx.compose.material3.Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Color.Gray, contentColor = Color.White
+                    )
+                ) { Text("Cancel") }
+                androidx.compose.material3.Button(
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Secondary, contentColor = Color.White
+                    )
+                ) { Text("Save") }
+            }
+        }
     }
 }

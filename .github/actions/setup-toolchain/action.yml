@@ -1,0 +1,38 @@
+name: Setup Toolchain
+description: Installs whichever language runtimes are requested, then runs an optional setup command.
+
+inputs:
+  java-version:
+    description: JDK version (empty to skip)
+    default: ''
+  node-version:
+    description: Node version (empty to skip)
+    default: ''
+  python-version:
+    description: Python version (empty to skip)
+    default: ''
+  setup-command:
+    description: Shell command run after runtimes are installed (e.g. "chmod +x ./gradlew", "npm ci", "pip install -r requirements.txt")
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.java-version != ''
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: ${{ inputs.java-version }}
+    - if: inputs.node-version != ''
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    - if: inputs.python-version != ''
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - if: inputs.setup-command != ''
+      shell: bash
+      env:
+        SETUP_COMMAND: ${{ inputs.setup-command }}
+      run: eval "$SETUP_COMMAND"
