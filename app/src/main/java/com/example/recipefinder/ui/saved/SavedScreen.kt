@@ -27,6 +27,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -59,9 +61,9 @@ private fun groupIngredientNames(names: List<String>): List<IngredientGroup> =
             IngredientGroup(displayName, variants.toSet())
         }
 @Composable
-fun SavedScreen(
-    recipes: List<Recipe> = emptyList(),
-    onRecipeClick: (Recipe) -> Unit = {}
+private fun AllRecipesTab(
+    recipes: List<Recipe>,
+    onRecipeClick: (Recipe) -> Unit
 )
 {
     val searchQuery = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
@@ -259,6 +261,17 @@ fun SavedScreen(
 
             }
         }
+        SavedRecipeList(filteredRecipes, onRecipeClick)
+    }
+
+}
+
+
+@Composable
+fun SavedRecipeList(
+    filteredRecipes: List<Recipe>,
+    onRecipeClick: (Recipe) -> Unit
+) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -325,8 +338,6 @@ fun SavedScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
-    }
-
 }
 
 @Preview(showBackground = true)
@@ -340,7 +351,216 @@ fun SavedScreenPreview() {
         Recipe(5, "Example Recipe 5", "Description of Example Recipe 5", 15),
     )
     RecipeFinderTheme {
-        SavedScreen(example, {})
+        SavedScreen(example, onRecipeClick = {})
     }
 
+}
+
+@Composable
+fun SavedScreen(
+    recipes: List<Recipe> = emptyList(),
+    folders: Map<String, List<Int>> = emptyMap(),
+    onRecipeClick: (Recipe) -> Unit = {},
+    onCreateFolder: (String) -> Unit = {},
+    onDeleteFolder: (String) -> Unit = {},
+    onFolderRecipesChanged: (String, List<Int>) -> Unit = { _, _ -> }
+) {
+    var selectedTab by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var openFolder by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+
+    // If the open folder was deleted, go back to the folder list
+    if (openFolder != null && openFolder !in folders) openFolder = null
+
+    androidx.compose.foundation.layout.Column {
+        androidx.compose.material3.TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = Primary,
+            contentColor = Color.White
+        ) {
+            listOf("All Recipes", "Folders").forEachIndexed { index, title ->
+                androidx.compose.material3.Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index; openFolder = null },
+                    text = { Text(title) }
+                )
+            }
+        }
+        val current = openFolder
+        when {
+            selectedTab == 0 -> AllRecipesTab(recipes, onRecipeClick)
+            current == null -> FolderListTab(
+                folders = folders,
+                onOpen = { openFolder = it },
+                onCreateFolder = onCreateFolder
+            )
+            else -> FolderDetail(
+                name = current,
+                allRecipes = recipes,
+                recipeIds = folders[current] ?: emptyList(),
+                onBack = { openFolder = null },
+                onRecipeClick = onRecipeClick,
+                onDelete = { onDeleteFolder(current) },
+                onChanged = { onFolderRecipesChanged(current, it) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun FolderListTab(
+    folders: Map<String, List<Int>>,
+    onOpen: (String) -> Unit,
+    onCreateFolder: (String) -> Unit
+) {
+    var showCreate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+        androidx.compose.material3.Button(
+            onClick = { showCreate = true },
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Primary)
+        ) { Text("New Folder", color = Color.White) }
+        Spacer(modifier = Modifier.height(8.dp))
+        if (folders.isEmpty()) {
+            Text("No folders yet. Create one (e.g. Dinner, Lunch, Sweets, Favorites).", color = Color.Gray)
+        }
+        LazyColumn {
+            itemsIndexed(folders.keys.toList()) { _, name ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .background(Primary, shape = MaterialTheme.shapes.medium)
+                        .clickable { onOpen(name) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = name,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${folders[name]?.size ?: 0} recipes",
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
+    if (showCreate) {
+        var newName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+        val trimmed = newName.trim()
+        val duplicate = folders.keys.any { it.equals(trimmed, ignoreCase = true) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = { Text("New Folder") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Folder name") },
+                    singleLine = true,
+                    isError = duplicate,
+                    supportingText = { if (duplicate) Text("A folder with this name already exists") }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    enabled = trimmed.isNotEmpty() && !duplicate,
+                    onClick = { onCreateFolder(trimmed); showCreate = false }
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showCreate = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun FolderDetail(
+    name: String,
+    allRecipes: List<Recipe>,
+    recipeIds: List<Int>,
+    onBack: () -> Unit,
+    onRecipeClick: (Recipe) -> Unit,
+    onDelete: () -> Unit,
+    onChanged: (List<Int>) -> Unit
+) {
+    var showPicker by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var confirmDelete by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val folderRecipes = allRecipes.filter { it.id in recipeIds }
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.TextButton(onClick = onBack) { Text("\u2190 Back", color = Primary) }
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleLarge,
+                color = Primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            androidx.compose.material3.TextButton(onClick = { showPicker = true }) { Text("Edit", color = Primary) }
+            androidx.compose.material3.TextButton(onClick = { confirmDelete = true }) { Text("Delete", color = Color.Red) }
+        }
+        if (folderRecipes.isEmpty()) {
+            Text("This folder is empty. Tap Edit to add recipes.", color = Color.Gray, modifier = Modifier.padding(16.dp))
+        }
+        SavedRecipeList(folderRecipes, onRecipeClick)
+    }
+    if (showPicker) {
+        val selected = androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateListOf<Int>().apply { addAll(recipeIds) }
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPicker = false },
+            title = { Text("Recipes in $name") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    itemsIndexed(allRecipes) { _, recipe ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (recipe.id in selected) selected.remove(recipe.id) else selected.add(recipe.id)
+                            }
+                        ) {
+                            Checkbox(
+                                checked = recipe.id in selected,
+                                onCheckedChange = {
+                                    if (it) selected.add(recipe.id) else selected.remove(recipe.id)
+                                }
+                            )
+                            Text(recipe.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    onChanged(selected.toList()); showPicker = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showPicker = false }) { Text("Cancel") }
+            }
+        )
+    }
+    if (confirmDelete) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete folder?") },
+            text = { Text("The recipes themselves will stay saved.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Delete") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
