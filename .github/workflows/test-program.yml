@@ -1,0 +1,90 @@
+name: Test Program (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch or SHA to check out
+        type: string
+        required: true
+      test-command:
+        type: string
+        required: true
+      build-command:
+        type: string
+        default: ''
+      runner:
+        type: string
+        default: ubuntu-latest
+      java-version:
+        type: string
+        default: ''
+      node-version:
+        type: string
+        default: ''
+      python-version:
+        type: string
+        default: ''
+      setup-command:
+        type: string
+        default: ''
+      log-name:
+        description: Artifact name for the captured output
+        type: string
+        default: test-log
+      fail-on-error:
+        description: Fail this job when tests fail (otherwise only the `result` output reports it)
+        type: boolean
+        default: false
+    outputs:
+      result:
+        description: success | failure
+        value: ${{ jobs.test.outputs.result }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      result: ${{ steps.result.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          java-version: ${{ inputs.java-version }}
+          node-version: ${{ inputs.node-version }}
+          python-version: ${{ inputs.python-version }}
+          setup-command: ${{ inputs.setup-command }}
+
+      - name: Build and test
+        id: tests
+        continue-on-error: true
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+          TEST_COMMAND: ${{ inputs.test-command }}
+        run: |
+          set -o pipefail
+          bash -ec 'if [ -n "$BUILD_COMMAND" ]; then eval "$BUILD_COMMAND"; fi; eval "$TEST_COMMAND"' \
+            2>&1 | tee "$RUNNER_TEMP/test-output.log"
+
+      - name: Record result
+        id: result
+        if: always()
+        run: echo "value=${{ steps.tests.outcome == 'success' && 'success' || 'failure' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.log-name }}
+          path: ${{ runner.temp }}/test-output.log
+          if-no-files-found: ignore
+
+      - name: Fail if requested
+        if: inputs.fail-on-error && steps.tests.outcome == 'failure'
+        run: exit 1
