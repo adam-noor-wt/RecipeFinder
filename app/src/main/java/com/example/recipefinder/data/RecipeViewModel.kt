@@ -14,4 +14,9 @@ class RecipeViewModel : ViewModel() {
     fun setSavedRecipes(newRecipes: List<Recipe>) {
         _savedRecipes.value = newRecipes
     }
+    private val _folders = MutableStateFlow<Map<String, List<Int>>>(emptyMap())
+    val folders: StateFlow<Map<String, List<Int>>> = _folders
+    fun setFolders(newFolders: Map<String, List<Int>>) {
+        _folders.value = newFolders
+    }
 }

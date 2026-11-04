@@ -33,6 +33,8 @@ import com.example.recipefinder.data.Unit
 import com.example.recipefinder.database.readRecipesFromDatabase
 import androidx.compose.runtime.collectAsState
 import com.example.recipefinder.database.readSavedRecipesFromDatabase
+import com.example.recipefinder.database.readFoldersFromDatabase
+import com.example.recipefinder.database.updateFoldersInDatabase
 import com.example.recipefinder.database.writeRecipeToDatabase
 import com.example.recipefinder.ui.components.RecipeFinderTabRow
 import com.example.recipefinder.ui.createrecipe.CreateRecipeScreen
@@ -128,6 +130,9 @@ fun fetchRecipes(database: FirebaseFirestore) {
             readSavedRecipesFromDatabase(database, foundRecipes, Firebase.auth.currentUser?.uid.toString()) { savedRecipes ->
                 // Update the ViewModel with the fetched recipes
                 getDatabaseRecipes(foundRecipes, savedRecipes)
+                Firebase.auth.currentUser?.uid?.let { uid ->
+                    readFoldersFromDatabase(database, uid) { recipeViewModel.setFolders(it) }
+                }
             }
         },
         {
@@ -142,6 +147,7 @@ fun fetchRecipes(database: FirebaseFirestore) {
 fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
     val recipes = recipeViewModel.recipes.collectAsState()
     val savedRecipes = recipeViewModel.savedRecipes.collectAsState()
+    val folders = recipeViewModel.folders.collectAsState()
     RecipeFinderTheme {
         // Get the NavController for navigation and the current backstack entry
         val navController = rememberNavController()
@@ -220,10 +226,21 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                     }
                 }
                 composable(route = Saved.route) {
-                    SavedScreen(savedRecipes.value, onRecipeClick = {recipe ->
-                        // Handle recipe click, navigate to a detailed view
-                        navController.navigate("${SingleRecipe.route}/${recipe.id}")
-                    })
+                    val saveFolders = { updated: Map<String, List<Int>> ->
+                        recipeViewModel.setFolders(updated)
+                        Firebase.auth.currentUser?.uid?.let { updateFoldersInDatabase(database, it, updated) }
+                    }
+                    SavedScreen(
+                        savedRecipes.value,
+                        folders = folders.value,
+                        onRecipeClick = {recipe ->
+                            // Handle recipe click, navigate to a detailed view
+                            navController.navigate("${SingleRecipe.route}/${recipe.id}")
+                        },
+                        onCreateFolder = { name -> saveFolders(folders.value + (name to emptyList())) },
+                        onDeleteFolder = { name -> saveFolders(folders.value - name) },
+                        onFolderRecipesChanged = { name, ids -> saveFolders(folders.value + (name to ids)) }
+                    )
                 }
                 composable(route = Search.route) {
                     SearchScreen(recipes.value, onRecipeClick = {recipe ->

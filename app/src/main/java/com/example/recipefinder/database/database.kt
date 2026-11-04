@@ -150,7 +150,7 @@ fun readSavedRecipesFromDatabase(db: FirebaseFirestore, recipes: List<Recipe>, u
 
 fun updateSavedRecipesInDatabase(db: FirebaseFirestore, userId: String, savedRecipes: List<Recipe>) {
     val savedRecipeIds = savedRecipes.map { it.id.toString() }
-    db.collection("USERS").document(userId).set(mapOf("savedRecipes" to savedRecipeIds))
+    db.collection("USERS").document(userId).set(mapOf("savedRecipes" to savedRecipeIds), com.google.firebase.firestore.SetOptions.merge())
         .addOnSuccessListener {
             // Update was successful
             println("Saved recipes updated successfully for user: $userId")
@@ -194,5 +194,35 @@ fun updateRecipeInDatabase(
         .addOnFailureListener { exception ->
             println("Error querying for recipe: ${exception.message}")
             onFailure(exception)
+        }
+}
+
+/**
+ * Read the user's custom saved-recipe folders (folder name -> recipe ids).
+ * Stored on USERS/{uid} as `folders: Map<String, List<String>>`.
+ */
+fun readFoldersFromDatabase(db: FirebaseFirestore, userId: String, onSuccess: (Map<String, List<Int>>) -> kotlin.Unit) {
+    db.collection("USERS").document(userId).get()
+        .addOnSuccessListener { document ->
+            val raw = document.get("folders") as? Map<*, *> ?: emptyMap<Any, Any>()
+            val folders = LinkedHashMap<String, List<Int>>()
+            raw.forEach { (k, v) ->
+                val ids = (v as? List<*>)?.mapNotNull { it?.toString()?.toIntOrNull() } ?: emptyList()
+                if (k is String) folders[k] = ids
+            }
+            onSuccess(folders)
+        }
+        .addOnFailureListener { exception ->
+            println("Error reading folders: ${exception.message}")
+            onSuccess(emptyMap())
+        }
+}
+
+fun updateFoldersInDatabase(db: FirebaseFirestore, userId: String, folders: Map<String, List<Int>>) {
+    val data = folders.mapValues { (_, ids) -> ids.map { it.toString() } }
+    // update() replaces the whole `folders` field (so deleted folders are removed); fall back to merge-set if the doc is missing
+    db.collection("USERS").document(userId).set(mapOf("folders" to data), com.google.firebase.firestore.SetOptions.mergeFields("folders"))
+        .addOnFailureListener { exception ->
+            println("Error updating folders: ${exception.message}")
         }
 }
