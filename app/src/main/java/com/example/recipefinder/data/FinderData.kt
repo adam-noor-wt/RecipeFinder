@@ -76,6 +76,8 @@ enum class Tag(
     SOUP("Soup", 55, TagCategory.DISH_TYPE),
     SALAD("Salad", 54, TagCategory.DISH_TYPE),
     SMOOTHIE("Smoothie", 53, TagCategory.DISH_TYPE),
+    SANDWICH("Sandwich", 52, TagCategory.DISH_TYPE),
+    BAKED("Baked", 51, TagCategory.DISH_TYPE),
 
     // Cuisine/ingredients
     PASTA("Pasta", 50, TagCategory.CUISINE),
@@ -84,6 +86,14 @@ enum class Tag(
     // Proteins/ingredients
     PROTEIN("Protein", 40, TagCategory.INGREDIENT),
     TOFU("Tofu", 39, TagCategory.INGREDIENT),
+    POULTRY("Poultry", 38, TagCategory.INGREDIENT),
+    RED_MEAT("Red Meat", 37, TagCategory.INGREDIENT),
+    SEAFOOD("Seafood", 36, TagCategory.INGREDIENT),
+    PORK("Pork", 35, TagCategory.INGREDIENT),
+    EGGS("Eggs", 34, TagCategory.INGREDIENT),
+    CHEESE("Cheese", 33, TagCategory.INGREDIENT),
+    VEGETABLES("Vegetables", 32, TagCategory.INGREDIENT),
+    RICE("Rice", 31, TagCategory.INGREDIENT),
 
     // Flavor profiles
     SPICY("Spicy", 30, TagCategory.FLAVOR),
