@@ -534,7 +534,14 @@ private fun FolderDetail(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            androidx.compose.material3.TextButton(onClick = onBack) { Text("\u2190 Back", color = Primary) }
+            androidx.compose.material3.IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                androidx.compose.material3.Icon(
+                    imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
             Text(
                 text = name,
                 style = MaterialTheme.typography.titleLarge,
@@ -543,8 +550,22 @@ private fun FolderDetail(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            androidx.compose.material3.TextButton(onClick = { showPicker = true }) { Text("Edit", color = Primary) }
-            androidx.compose.material3.TextButton(onClick = { confirmDelete = true }) { Text("Delete", color = Color.Red) }
+            androidx.compose.material3.IconButton(onClick = { showPicker = true }, modifier = Modifier.size(48.dp)) {
+                androidx.compose.material3.Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Filled.Edit,
+                    contentDescription = "Edit folder",
+                    tint = Primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+            androidx.compose.material3.IconButton(onClick = { confirmDelete = true }, modifier = Modifier.size(48.dp)) {
+                androidx.compose.material3.Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Filled.Delete,
+                    contentDescription = "Delete folder",
+                    tint = Color.Red,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
         if (folderRecipes.isEmpty()) {
             Text("This folder is empty. Tap Edit to add recipes.", color = Color.Gray, modifier = Modifier.padding(16.dp))
