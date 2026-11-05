@@ -74,6 +74,8 @@ jobs:
 
       - name: Commit and push
         id: push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "claude-bot[bot]"
           git config user.email "claude-bot[bot]@users.noreply.github.com"
@@ -84,7 +86,7 @@ jobs:
             exit 0
           fi
           git commit -m "fix: automatically resolved issue #${{ github.event.issue.number }} via Claude"
-          git push origin "HEAD:refs/heads/${{ steps.branch.outputs.name }}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/${{ steps.branch.outputs.name }}"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -161,6 +163,8 @@ jobs:
           acknowledge-dangerously-skip-permissions-responsibility: "true"
 
       - name: Commit and push fix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "claude-bot[bot]"
           git config user.email "claude-bot[bot]@users.noreply.github.com"
@@ -170,7 +174,7 @@ jobs:
             exit 0
           fi
           git commit -m "fix: address failing tests for issue #${{ github.event.issue.number }}"
-          git push origin "HEAD:refs/heads/${{ needs.implement.outputs.branch }}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/${{ needs.implement.outputs.branch }}"
 
       - uses: actions/upload-artifact@v4
         if: always()
