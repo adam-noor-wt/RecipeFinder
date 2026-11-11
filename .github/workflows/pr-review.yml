@@ -83,6 +83,19 @@ jobs:
           execution-file: ${{ steps.claude-review.outputs.execution_file }}
           stage: review
 
+      - name: Add review usage to PR description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Re-read the live description (it may have changed since the run started)
+          gh pr view "$PR_NUMBER" --json body --jq .body > "$RUNNER_TEMP/pr-desc.md"
+          python3 .github/scripts/usage_update.py "$RUNNER_TEMP/pr-desc.md" \
+            --add-file "$RUNNER_TEMP/usage-review/usage.json" > "$RUNNER_TEMP/pr-desc-new.md"
+          gh pr edit "$PR_NUMBER" --body-file "$RUNNER_TEMP/pr-desc-new.md"
+
       - name: Post or update review comment
         env:
           GH_TOKEN: ${{ github.token }}

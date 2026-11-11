@@ -331,7 +331,9 @@ jobs:
           bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '✅ **Claude Bot:** Tests passed. Opening a pull request...'
 
       - name: Create pull request
+        id: create-pr
         env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           BRANCH: ${{ needs.implement.outputs.branch }}
@@ -351,9 +353,14 @@ jobs:
             fi
             echo; echo "## Claude Notes"
             cat "$RUNNER_TEMP"/notes/*/claude-notes.md 2>/dev/null || echo "_No notes left._"
-            echo; echo "## Token usage"
-            bash .github/scripts/usage-summary.sh "$RUNNER_TEMP/usage"
-          } > "$RUNNER_TEMP/pr-body.md"
+          } > "$RUNNER_TEMP/pr-body-base.md"
+          # Usage table: this run's stages + triage usage recorded in the issue body.
+          # The PR review workflow later adds its own rows to the same table.
+          printf '%s' "$ISSUE_BODY" > "$RUNNER_TEMP/issue-body.md"
+          python3 .github/scripts/usage_update.py "$RUNNER_TEMP/pr-body-base.md" \
+            --add-dir "$RUNNER_TEMP/usage" --extra-source "$RUNNER_TEMP/issue-body.md" > "$RUNNER_TEMP/pr-body.md"
+          python3 .github/scripts/usage_update.py "$RUNNER_TEMP/pr-body.md" --mode total > "$RUNNER_TEMP/total.txt"
+          echo "total=$(cat "$RUNNER_TEMP/total.txt")" >> "$GITHUB_OUTPUT"
           gh pr create --title "Closes #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
             --body-file "$RUNNER_TEMP/pr-body.md" --head "$BRANCH" --base "$BASE_BRANCH"
 
@@ -361,10 +368,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          TOTAL: ${{ steps.create-pr.outputs.total }}
         run: |
           URL=$(gh pr list --head "${{ needs.implement.outputs.branch }}" --json url --jq '.[0].url')
-          TOTAL=$(bash .github/scripts/usage-summary.sh "$RUNNER_TEMP/usage" total)
-          MSG=$(printf '🎉 **Claude Bot:** Pull request opened: %s\n📊 **%s tokens** used by Claude on this PR (implementation + any debug pass).' "$URL" "$TOTAL")
+          MSG=$(printf '🎉 **Claude Bot:** Pull request opened: %s\n📊 **%s tokens** used so far (triage + implementation + any debug pass). PR review usage is added to the PR description as it runs.' "$URL" "$TOTAL")
           FINAL=true bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} "$MSG"
 
   # ---- 6. Always append notes (and the failure log, if any) to the run summary ----
@@ -383,11 +390,14 @@ jobs:
       - name: Write summary
         env:
           RETEST_RESULT: ${{ needs.retest.result }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           echo "## Claude Notes" >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP"/art/notes-*/claude-notes.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null \
             || echo "_No notes left._" >> "$GITHUB_STEP_SUMMARY"
-          { echo; echo "## Token usage"; bash .github/scripts/usage-summary.sh "$RUNNER_TEMP/art"; } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s' "$ISSUE_BODY" > "$RUNNER_TEMP/issue-body.md"
+          { echo; echo "## Token usage"; python3 .github/scripts/usage_update.py /dev/null --mode table \
+              --add-dir "$RUNNER_TEMP/art" --extra-source "$RUNNER_TEMP/issue-body.md"; } >> "$GITHUB_STEP_SUMMARY"
           if [ "$RETEST_RESULT" = "failure" ]; then
             {
               echo; echo "### Tests still failing after debug attempt"

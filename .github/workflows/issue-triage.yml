@@ -114,19 +114,29 @@ jobs:
           gh label create needs-info --color fbca04 2>/dev/null || true
           gh label create awaiting-confirmation --color 0e8a16 2>/dev/null || true
 
+          # Record this triage run's token usage in a hidden table at the end of the issue body
+          # (later workflows read it and add their own rows).
+          update_body() {
+            python3 .github/scripts/usage_update.py "$RUNNER_TEMP/pre-body.md" \
+              --add-file "$RUNNER_TEMP/usage-triage/usage.json" > "$RUNNER_TEMP/new-body.md"
+            gh issue edit "$NUMBER" --body-file "$RUNNER_TEMP/new-body.md"
+          }
+
           if [ "$VERDICT" = "READY" ]; then
             {
               printf '%s\n\n' "$ORIGINAL_BODY"
               echo "---"
               echo "## Triage details (AI-generated)"
               cat "$RUNNER_TEMP/triage-body.md"
-            } > "$RUNNER_TEMP/new-body.md"
-            gh issue edit "$NUMBER" --body-file "$RUNNER_TEMP/new-body.md"
+            } > "$RUNNER_TEMP/pre-body.md"
+            update_body
             gh issue edit "$NUMBER" --remove-label needs-info 2>/dev/null || true
             gh issue edit "$NUMBER" --add-label awaiting-confirmation
             MSG=$(printf '✅ **Triage complete:** clarified details were added to the issue description.\n\nPlease comment "Confirm" to pass this to Claude Bot. _(%s tokens used for triage)_' "$TOKENS")
             FINAL=true bash .github/scripts/issue-status.sh "$NUMBER" "$MSG"
           elif [ "$VERDICT" = "NEEDS_INFO" ]; then
+            printf '%s' "$ORIGINAL_BODY" > "$RUNNER_TEMP/pre-body.md"
+            update_body
             MSG=$(printf '❓ **Triage complete:** more information is needed before Claude Bot can pick this up. Could you clarify: _(%s tokens used for triage)_\n\n%s' "$TOKENS" "$(cat "$RUNNER_TEMP/triage-body.md")")
             FINAL=true bash .github/scripts/issue-status.sh "$NUMBER" "$MSG"
             gh issue edit "$NUMBER" --remove-label awaiting-confirmation 2>/dev/null || true
