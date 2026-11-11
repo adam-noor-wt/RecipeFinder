@@ -1,8 +1,8 @@
 name: Claude Issue Triage
 
 # Runs on every new issue. Claude clarifies the issue; if it's actionable the issue gets the
-# `claude-bot` label (which starts claude-agent.yml), otherwise Claude asks questions and
-# the issue gets `needs-info`. While an issue is `needs-info`, edits and new comments
+# `awaiting-confirmation` label and a prompt to comment "Confirm" (which starts claude-agent.yml),
+# otherwise Claude asks questions and the issue gets `needs-info`. While an issue is `needs-info`, edits and new comments
 # from trusted users re-run triage.
 
 on:
@@ -38,14 +38,6 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - name: Announce triage start
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          🔍 **Triage:** Beginning triage of this issue...'
-
       - uses: actions/checkout@v4
 
       - name: Fetch issue comments
@@ -53,11 +45,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh api --paginate "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") and (.body | contains("<!-- claude-status -->") | not)) | "**\(.user.login)**:\n\(.body)\n"' \
+            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]")) | "**\(.user.login)**:\n\(.body)\n"' \
             > "$RUNNER_TEMP/issue-comments.md"
           [ -s "$RUNNER_TEMP/issue-comments.md" ] || echo "(no comments)" > "$RUNNER_TEMP/issue-comments.md"
 
+      - name: Announce triage start
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '🔍 **Triage:** Beginning triage of this issue...'
+
       - name: Ask Claude to triage the issue
+        id: claude-triage
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: https://api.fuelix.ai
@@ -93,20 +93,26 @@ jobs:
                - If NEEDS_INFO: a short list of specific questions for the author (max 5).
             Do not modify any repository files.
 
+      - name: Record token usage (triage)
+        id: usage-triage
+        if: always()
+        uses: ./.github/actions/claude-usage
+        with:
+          execution-file: ${{ steps.claude-triage.outputs.execution_file }}
+          stage: triage
+
       - name: Apply triage result
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Labels added with GITHUB_TOKEN don't trigger other workflows; a PAT is required
-          # so that adding `claude-bot` starts claude-agent.yml.
-          LABEL_TOKEN: ${{ secrets.LABEL_PAT }}
           GH_REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.issue.number }}
           ORIGINAL_BODY: ${{ github.event.issue.body }}
+          TOKENS: ${{ steps.usage-triage.outputs.total }}
         run: |
           set -euo pipefail
           VERDICT=$(tr -d '[:space:]' < "$RUNNER_TEMP/triage-verdict.txt")
-          gh label create claude-bot --color 7057ff 2>/dev/null || true
           gh label create needs-info --color fbca04 2>/dev/null || true
+          gh label create awaiting-confirmation --color 0e8a16 2>/dev/null || true
 
           if [ "$VERDICT" = "READY" ]; then
             {
@@ -117,17 +123,13 @@ jobs:
             } > "$RUNNER_TEMP/new-body.md"
             gh issue edit "$NUMBER" --body-file "$RUNNER_TEMP/new-body.md"
             gh issue edit "$NUMBER" --remove-label needs-info 2>/dev/null || true
-            if [ -z "$LABEL_TOKEN" ]; then
-              echo "::error::Secret LABEL_PAT is not set. Add a PAT with issues write access so the claude-bot label can trigger claude-agent.yml."
-              exit 1
-            fi
-            gh issue comment "$NUMBER" --body "<!-- claude-status -->
-            ✅ **Triage complete:** clarified details were added to the issue description. Passing to Claude Bot..."
-            # Body is updated first, so the agent sees the clarified issue when the label fires
-            GH_TOKEN="$LABEL_TOKEN" gh issue edit "$NUMBER" --add-label claude-bot
+            gh issue edit "$NUMBER" --add-label awaiting-confirmation
+            MSG=$(printf '✅ **Triage complete:** clarified details were added to the issue description.\n\nPlease comment "Confirm" to pass this to Claude Bot. _(%s tokens used for triage)_' "$TOKENS")
+            FINAL=true bash .github/scripts/issue-status.sh "$NUMBER" "$MSG"
           elif [ "$VERDICT" = "NEEDS_INFO" ]; then
-            { echo "<!-- claude-status -->"; echo "❓ **Triage complete:** more information is needed before Claude Bot can pick this up. Could you clarify:"; echo; cat "$RUNNER_TEMP/triage-body.md"; } > "$RUNNER_TEMP/comment.md"
-            gh issue comment "$NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+            MSG=$(printf '❓ **Triage complete:** more information is needed before Claude Bot can pick this up. Could you clarify: _(%s tokens used for triage)_\n\n%s' "$TOKENS" "$(cat "$RUNNER_TEMP/triage-body.md")")
+            FINAL=true bash .github/scripts/issue-status.sh "$NUMBER" "$MSG"
+            gh issue edit "$NUMBER" --remove-label awaiting-confirmation 2>/dev/null || true
             gh issue edit "$NUMBER" --add-label needs-info
           else
             echo "Unexpected verdict: $VERDICT"; exit 1

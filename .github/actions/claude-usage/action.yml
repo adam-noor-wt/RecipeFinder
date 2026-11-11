@@ -1,0 +1,52 @@
+name: Claude Usage
+description: Reads token usage from a claude-code-action execution file, exposes the total, and optionally uploads it as an artifact for later totalling.
+
+inputs:
+  execution-file:
+    description: The `execution_file` output of the claude-code-action step
+    default: ''
+  stage:
+    description: Short stage name (e.g. implement, debug)
+    required: true
+  upload:
+    description: "'true' to upload usage as an artifact named usage-<stage>"
+    default: 'false'
+
+outputs:
+  total:
+    description: Total tokens (input + output + cache) for this step
+    value: ${{ steps.calc.outputs.total }}
+
+runs:
+  using: composite
+  steps:
+    - id: calc
+      shell: bash
+      env:
+        EXEC_FILE: ${{ inputs.execution-file }}
+        STAGE: ${{ inputs.stage }}
+      run: |
+        DIR="$RUNNER_TEMP/usage-$STAGE"
+        mkdir -p "$DIR"
+        ZERO=$(jq -cn --arg s "$STAGE" '{stage:$s,input:0,output:0,cache_read:0,cache_creation:0,total:0}')
+        if [ -n "$EXEC_FILE" ] && [ -f "$EXEC_FILE" ]; then
+          jq -cs --arg stage "$STAGE" '
+            (flatten | map(select(type=="object" and .type=="result")) | last // {}) as $r
+            | ($r.usage // {}) as $u
+            | {stage:$stage,
+               input:($u.input_tokens//0), output:($u.output_tokens//0),
+               cache_read:($u.cache_read_input_tokens//0), cache_creation:($u.cache_creation_input_tokens//0)}
+            | .total = (.input + .output + .cache_read + .cache_creation)' \
+            "$EXEC_FILE" > "$DIR/usage.json" 2>/dev/null || echo "$ZERO" > "$DIR/usage.json"
+        else
+          echo "No execution file for stage '$STAGE'; recording zero usage."
+          echo "$ZERO" > "$DIR/usage.json"
+        fi
+        cat "$DIR/usage.json"
+        echo "total=$(jq '.total' "$DIR/usage.json")" >> "$GITHUB_OUTPUT"
+
+    - if: inputs.upload == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: usage-${{ inputs.stage }}
+        path: ${{ runner.temp }}/usage-${{ inputs.stage }}/usage.json

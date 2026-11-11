@@ -26,6 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Ask Claude to review the changes
+        id: claude-review
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: https://api.fuelix.ai
@@ -74,16 +75,25 @@ jobs:
             total, and skip nitpicks unless they break a stated standard. Be concise.
             Do not modify any repository files.
 
+      - name: Record token usage (review)
+        id: usage-review
+        if: always()
+        uses: ./.github/actions/claude-usage
+        with:
+          execution-file: ${{ steps.claude-review.outputs.execution_file }}
+          stage: review
+
       - name: Post or update review comment
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          TOKENS: ${{ steps.usage-review.outputs.total }}
         run: |
           set -euo pipefail
           MARKER="<!-- claude-pr-review -->"
           { echo "$MARKER"; echo "## Claude Review"; echo; cat "$RUNNER_TEMP/review.md"; \
-            echo; echo "_Automated review for commit ${GITHUB_SHA:0:7}. Verify before acting on it._"; } > "$RUNNER_TEMP/comment.md"
+            echo; echo "_Automated review for commit ${GITHUB_SHA:0:7}. ${TOKENS} tokens used. Verify before acting on it._"; } > "$RUNNER_TEMP/comment.md"
 
           EXISTING=$(gh api --paginate "/repos/${GH_REPO}/issues/${PR_NUMBER}/comments" \
             --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)

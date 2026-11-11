@@ -6,9 +6,14 @@ name: Claude Developer Agent
 #   SETUP_COMMAND    (optional)  e.g. chmod +x ./gradlew | npm ci
 #   JAVA_VERSION / NODE_VERSION / PYTHON_VERSION (optional)  runtimes to install
 
+# Starts when (a) someone adds the `claude-bot` label, or (b) a collaborator comments "Confirm" on an
+# issue that triage marked `awaiting-confirmation`.
+
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -19,21 +24,33 @@ permissions:
 jobs:
   # ---- 1. Claude implements the issue and pushes a branch ----
   implement:
-    if: github.event.label.name == 'claude-bot'
+    if: >-
+      (github.event_name == 'issues' && github.event.label.name == 'claude-bot') ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request == null &&
+        contains(github.event.issue.labels.*.name, 'awaiting-confirmation') &&
+        !contains(github.event.issue.labels.*.name, 'claude-bot') &&
+        contains(fromJSON('["confirm","confirm.","confirm!","confirm\n","confirm\r\n"]'), github.event.comment.body) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    # Job-level, so unrelated comments (skipped by the `if` above) never queue against a real run
+    concurrency:
+      group: claude-agent-${{ github.event.issue.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     outputs:
       branch: ${{ steps.branch.outputs.name }}
       changed: ${{ steps.push.outputs.changed }}
     steps:
-      - name: Announce start
+      - uses: actions/checkout@v4
+
+      - name: Mark issue in progress and announce start
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          🤖 **Claude Bot:** Starting implementation...'
-
-      - uses: actions/checkout@v4
+          gh label create claude-bot --color 7057ff 2>/dev/null || true
+          gh issue edit ${{ github.event.issue.number }} --add-label claude-bot --remove-label awaiting-confirmation 2>/dev/null || true
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '🤖 **Claude Bot:** Starting implementation...'
 
       - uses: ./.github/actions/setup-toolchain
         with:
@@ -55,11 +72,12 @@ jobs:
         run: |
           # Only comments from people with repo access, plus the triage bot's questions
           gh api --paginate "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") and (.body | contains("<!-- claude-status -->") | not)) | "**\(.user.login)**:\n\(.body)\n"' \
+            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]")) | "**\(.user.login)**:\n\(.body)\n"' \
             > "$RUNNER_TEMP/issue-comments.md"
           [ -s "$RUNNER_TEMP/issue-comments.md" ] || echo "(no comments)" > "$RUNNER_TEMP/issue-comments.md"
 
       - name: Ask Claude to resolve the issue
+        id: claude-implement
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: https://api.fuelix.ai
@@ -95,6 +113,15 @@ jobs:
             Do not put this file inside the repository.
           acknowledge-dangerously-skip-permissions-responsibility: "true"
 
+      - name: Record token usage (implement)
+        id: usage-implement
+        if: always()
+        uses: ./.github/actions/claude-usage
+        with:
+          execution-file: ${{ steps.claude-implement.outputs.execution_file }}
+          stage: implement
+          upload: 'true'
+
       - name: Commit and push
         id: push
         env:
@@ -118,8 +145,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          ✅ **Claude Bot:** Implementation pushed to branch `${{ steps.branch.outputs.name }}`. Running tests...'
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '✅ **Claude Bot:** Implementation pushed to branch `${{ steps.branch.outputs.name }}`. Running tests...'
 
       - name: Announce implementation result (no changes)
         if: steps.push.outputs.changed == 'false'
@@ -127,8 +153,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          ⚠️ **Claude Bot:** Finished without making any changes, so there is nothing to test.'
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '⚠️ **Claude Bot:** Finished without making any changes, so there is nothing to test.'
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -158,17 +183,16 @@ jobs:
     if: needs.test.outputs.result == 'failure'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.implement.outputs.branch }}
+
       - name: Announce debug start
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          ❌ **Claude Bot:** Tests failed. Debugging now (one attempt)...'
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.implement.outputs.branch }}
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '❌ **Claude Bot:** Tests failed. Debugging now (one attempt)...'
 
       - uses: ./.github/actions/setup-toolchain
         with:
@@ -188,11 +212,12 @@ jobs:
         run: |
           # Only comments from people with repo access, plus the triage bot's questions
           gh api --paginate "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") and (.body | contains("<!-- claude-status -->") | not)) | "**\(.user.login)**:\n\(.body)\n"' \
+            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]")) | "**\(.user.login)**:\n\(.body)\n"' \
             > "$RUNNER_TEMP/issue-comments.md"
           [ -s "$RUNNER_TEMP/issue-comments.md" ] || echo "(no comments)" > "$RUNNER_TEMP/issue-comments.md"
 
       - name: Ask Claude to debug the failing tests
+        id: claude-debug
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: https://api.fuelix.ai
@@ -223,6 +248,15 @@ jobs:
             (include the root cause), and **Please check**. Omit empty headings.
           acknowledge-dangerously-skip-permissions-responsibility: "true"
 
+      - name: Record token usage (debug)
+        id: usage-debug
+        if: always()
+        uses: ./.github/actions/claude-usage
+        with:
+          execution-file: ${{ steps.claude-debug.outputs.execution_file }}
+          stage: debug
+          upload: 'true'
+
       - name: Commit and push fix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -242,8 +276,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          🔧 **Claude Bot:** Debug attempt finished. Re-running tests...'
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '🔧 **Claude Bot:** Debug attempt finished. Re-running tests...'
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -285,13 +318,17 @@ jobs:
           pattern: notes-*
           path: ${{ runner.temp }}/notes
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: usage-*
+          path: ${{ runner.temp }}/usage
+
       - name: Announce PR creation
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
-          ✅ **Claude Bot:** Tests passed. Opening a pull request...'
+          bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} '✅ **Claude Bot:** Tests passed. Opening a pull request...'
 
       - name: Create pull request
         env:
@@ -314,6 +351,8 @@ jobs:
             fi
             echo; echo "## Claude Notes"
             cat "$RUNNER_TEMP"/notes/*/claude-notes.md 2>/dev/null || echo "_No notes left._"
+            echo; echo "## Token usage"
+            bash .github/scripts/usage-summary.sh "$RUNNER_TEMP/usage"
           } > "$RUNNER_TEMP/pr-body.md"
           gh pr create --title "Closes #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
             --body-file "$RUNNER_TEMP/pr-body.md" --head "$BRANCH" --base "$BASE_BRANCH"
@@ -324,8 +363,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           URL=$(gh pr list --head "${{ needs.implement.outputs.branch }}" --json url --jq '.[0].url')
-          gh issue comment ${{ github.event.issue.number }} --body "<!-- claude-status -->
-          🎉 **Claude Bot:** Pull request opened: $URL"
+          TOTAL=$(bash .github/scripts/usage-summary.sh "$RUNNER_TEMP/usage" total)
+          MSG=$(printf '🎉 **Claude Bot:** Pull request opened: %s\n📊 **%s tokens** used by Claude on this PR (implementation + any debug pass).' "$URL" "$TOTAL")
+          FINAL=true bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} "$MSG"
 
   # ---- 6. Always append notes (and the failure log, if any) to the run summary ----
   summary:
@@ -333,6 +373,8 @@ jobs:
     if: always() && needs.implement.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: '*'
@@ -345,6 +387,7 @@ jobs:
           echo "## Claude Notes" >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP"/art/notes-*/claude-notes.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null \
             || echo "_No notes left._" >> "$GITHUB_STEP_SUMMARY"
+          { echo; echo "## Token usage"; bash .github/scripts/usage-summary.sh "$RUNNER_TEMP/art"; } >> "$GITHUB_STEP_SUMMARY"
           if [ "$RETEST_RESULT" = "failure" ]; then
             {
               echo; echo "### Tests still failing after debug attempt"
@@ -357,5 +400,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "<!-- claude-status -->
-          🛑 **Claude Bot:** The workflow failed (tests still failing after the debug attempt, or a step errored). No PR was opened. See the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          FINAL=true bash .github/scripts/issue-status.sh ${{ github.event.issue.number }} "🛑 **Claude Bot:** The workflow failed (tests still failing after the debug attempt, or a step errored). No PR was opened. See the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
