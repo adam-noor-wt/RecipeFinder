@@ -1,5 +1,6 @@
 package com.example.recipefinder.ui.discover
 
+import com.example.recipefinder.ui.components.LoadingOrEmptyState
 import android.annotation.SuppressLint
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -131,6 +132,7 @@ fun GameButton(
 @Composable
 fun DiscoverScreen(
     recipes: List<Recipe>,
+    isLoaded: Boolean = true,
     model: RecipeViewModel,
     onRecipeClick: (Recipe) -> Unit = {},
     navigator: NavHostController?,
@@ -171,7 +173,9 @@ fun DiscoverScreen(
                 )
             }
         }
-        Row(
+        if (!isLoaded || recipes.isEmpty()) {
+            LoadingOrEmptyState(isLoaded, "No recipes found")
+        } else Row(
             modifier = Modifier
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -224,7 +228,7 @@ fun DiscoverScreenPreview() {
         Recipe(5, "Example Recipe 5", "Description of Example Recipe 5", 15),
     )
     RecipeFinderTheme {
-        DiscoverScreen(example, RecipeViewModel(), {}, navigator = null, currentSaves = listOf())
+        DiscoverScreen(example, model = RecipeViewModel(), onRecipeClick = {}, navigator = null, currentSaves = listOf())
     }
 
 }
