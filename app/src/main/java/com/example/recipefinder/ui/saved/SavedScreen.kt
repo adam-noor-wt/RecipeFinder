@@ -1,5 +1,6 @@
 package com.example.recipefinder.ui.saved
 
+import com.example.recipefinder.ui.components.LoadingOrEmptyState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +70,7 @@ private fun groupIngredientNames(names: List<String>): List<IngredientGroup> =
 @Composable
 private fun AllRecipesTab(
     recipes: List<Recipe>,
+    isLoaded: Boolean,
     onRecipeClick: (Recipe) -> Unit
 )
 {
@@ -267,7 +269,11 @@ private fun AllRecipesTab(
 
             }
         }
-        SavedRecipeList(filteredRecipes, onRecipeClick)
+        if (!isLoaded || recipes.isEmpty()) {
+            LoadingOrEmptyState(isLoaded, "No saved recipes found")
+        } else {
+            SavedRecipeList(filteredRecipes, onRecipeClick)
+        }
     }
 
 }
@@ -365,6 +371,7 @@ fun SavedScreenPreview() {
 @Composable
 fun SavedScreen(
     recipes: List<Recipe> = emptyList(),
+    isLoaded: Boolean = true,
     folders: Map<String, List<Int>> = emptyMap(),
     onRecipeClick: (Recipe) -> Unit = {},
     onCreateFolder: (String) -> Unit = {},
@@ -401,7 +408,7 @@ fun SavedScreen(
         }
         val current = openFolder
         when {
-            selectedTab == 0 -> AllRecipesTab(recipes, onRecipeClick)
+            selectedTab == 0 -> AllRecipesTab(recipes, isLoaded, onRecipeClick)
             current == null -> FolderListTab(
                 folders = folders,
                 onOpen = { openFolder = it },

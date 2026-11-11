@@ -1,5 +1,6 @@
 package com.example.recipefinder.ui.search
 
+import com.example.recipefinder.ui.components.LoadingOrEmptyState
 import android.annotation.SuppressLint
 import androidx.compose.animation.EnterTransition
 import androidx.compose.foundation.Image
@@ -197,6 +198,7 @@ fun IngredientChip(text: String, onRemove: () -> Unit) {
 @Composable
 fun SearchScreen(
     recipes: List<Recipe>,
+    isLoaded: Boolean = true,
     onRecipeClick: (Recipe) -> Unit = {}
 )
 {
@@ -412,7 +414,9 @@ fun SearchScreen(
                 }
             }
             // Display recipes in a grid
-            LazyVerticalGrid(
+            if (!isLoaded || recipes.isEmpty()) {
+                LoadingOrEmptyState(isLoaded, "No recipes found")
+            } else LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier
                     .fillMaxSize()

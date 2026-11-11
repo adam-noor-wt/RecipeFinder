@@ -14,6 +14,12 @@ class RecipeViewModel : ViewModel() {
     fun setSavedRecipes(newRecipes: List<Recipe>) {
         _savedRecipes.value = newRecipes
     }
+    private val _hasLoaded = MutableStateFlow(false)
+    /** True once the first fetch has finished (successfully or not). */
+    val hasLoaded: StateFlow<Boolean> = _hasLoaded
+    fun setHasLoaded(loaded: Boolean) {
+        _hasLoaded.value = loaded
+    }
     private val _folders = MutableStateFlow<Map<String, List<Int>>>(emptyMap())
     val folders: StateFlow<Map<String, List<Int>>> = _folders
     fun setFolders(newFolders: Map<String, List<Int>>) {
