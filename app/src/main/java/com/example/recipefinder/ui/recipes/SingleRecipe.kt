@@ -62,6 +62,7 @@ import com.example.recipefinder.data.Tag
 import com.example.recipefinder.data.Unit
 import com.example.recipefinder.data.fractionString
 import com.example.recipefinder.database.updateSavedRecipesInDatabase
+import com.example.recipefinder.database.updateFoldersInDatabase
 import com.example.recipefinder.recipeViewModel
 import com.example.recipefinder.ui.theme.Primary
 import com.example.recipefinder.ui.theme.RecipeFinderTheme
@@ -195,6 +196,14 @@ fun SingleRecipeScreen(
                                                         Firebase.firestore,
                                                         Firebase.auth.currentUser?.uid ?: "",
                                                         favoritedRecipes.value.filter { it.id != recipe.id })
+                                                    val currentFolders = model.folders.value
+                                                    if (currentFolders.values.any { recipe.id in it }) {
+                                                        val prunedFolders = currentFolders.mapValues { (_, ids) -> ids.filter { it != recipe.id } }
+                                                        model.setFolders(prunedFolders)
+                                                        Firebase.auth.currentUser?.uid?.let {
+                                                            updateFoldersInDatabase(Firebase.firestore, it, prunedFolders)
+                                                        }
+                                                    }
                                                 },
                                                 colors = ButtonColors(
                                                     containerColor = Color(0xFFFFD700),
