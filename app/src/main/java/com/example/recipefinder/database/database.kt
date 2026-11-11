@@ -235,9 +235,28 @@ fun removeRecipeFromAllFolders(
     userId: String?,
     recipeId: Int
 ) {
+    // Prune in-memory state (may be empty/not yet loaded, so don't rely on it alone)
     val current = model.folders.value
-    if (current.values.none { recipeId in it }) return
-    val pruned = current.mapValues { (_, ids) -> ids.filter { it != recipeId } }
-    model.setFolders(pruned)
-    if (!userId.isNullOrEmpty()) updateFoldersInDatabase(db, userId, pruned)
+    if (current.values.any { recipeId in it }) {
+        model.setFolders(current.mapValues { (_, ids) -> ids.filter { it != recipeId } })
+    }
+    if (userId.isNullOrEmpty()) return
+    // Prune the persisted folders too, reading from Firestore so stale/unloaded local state can't leave the recipe behind
+    val ref = db.collection("USERS").document(userId)
+    db.runTransaction { tx ->
+        val raw = tx.get(ref).get("folders") as? Map<*, *> ?: return@runTransaction null
+        var changed = false
+        val pruned = LinkedHashMap<String, List<String>>()
+        raw.forEach { (k, v) ->
+            if (k !is String) return@forEach
+            val ids = (v as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+            val kept = ids.filter { it.toIntOrNull() != recipeId }
+            if (kept.size != ids.size) changed = true
+            pruned[k] = kept
+        }
+        if (changed) tx.set(ref, mapOf("folders" to pruned), com.google.firebase.firestore.SetOptions.mergeFields("folders"))
+        null
+    }.addOnFailureListener { exception ->
+        println("Error removing recipe from folders: ${exception.message}")
+    }
 }
