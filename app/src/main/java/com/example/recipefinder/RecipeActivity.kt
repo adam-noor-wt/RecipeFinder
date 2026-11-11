@@ -121,6 +121,7 @@ val recipeViewModel = RecipeViewModel()
 private fun getDatabaseRecipes(foundRecipes: List<Recipe>, savedRecipes: List<Recipe>) {
     recipeViewModel.setRecipes(foundRecipes)
     recipeViewModel.setSavedRecipes(savedRecipes)
+    recipeViewModel.setHasLoaded(true)
 }
 
 fun fetchRecipes(database: FirebaseFirestore) {
@@ -138,6 +139,8 @@ fun fetchRecipes(database: FirebaseFirestore) {
         {
             // Handle error case, e.g., show a message to the user
             println("Error fetching recipes: $it")
+            // Stop the spinner; screens show their "No ... recipes found" message
+            recipeViewModel.setHasLoaded(true)
         }
     )
 }
@@ -148,6 +151,7 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
     val recipes = recipeViewModel.recipes.collectAsState()
     val savedRecipes = recipeViewModel.savedRecipes.collectAsState()
     val folders = recipeViewModel.folders.collectAsState()
+    val hasLoaded = recipeViewModel.hasLoaded.collectAsState()
     RecipeFinderTheme {
         // Get the NavController for navigation and the current backstack entry
         val navController = rememberNavController()
@@ -232,6 +236,7 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                     }
                     SavedScreen(
                         savedRecipes.value,
+                        isLoaded = hasLoaded.value,
                         folders = folders.value,
                         onRecipeClick = {recipe ->
                             // Handle recipe click, navigate to a detailed view
@@ -243,7 +248,7 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                     )
                 }
                 composable(route = Search.route) {
-                    SearchScreen(recipes.value, onRecipeClick = {recipe ->
+                    SearchScreen(recipes.value, isLoaded = hasLoaded.value, onRecipeClick = {recipe ->
                     // Handle recipe click, navigate to a detailed view
                     navController.navigate("${SingleRecipe.route}/${recipe.id}")
                     })
@@ -251,6 +256,7 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                 composable(route = Discover.route) {
                     DiscoverScreen(
                         recipes = recipes.value,
+                        isLoaded = hasLoaded.value,
                         model = recipeViewModel,
                         onRecipeClick = { recipe ->
                             // Handle recipe click, navigate to a detailed view
