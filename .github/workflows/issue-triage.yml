@@ -109,6 +109,10 @@ jobs:
             } > "$RUNNER_TEMP/new-body.md"
             gh issue edit "$NUMBER" --body-file "$RUNNER_TEMP/new-body.md"
             gh issue edit "$NUMBER" --remove-label needs-info 2>/dev/null || true
+            if [ -z "$LABEL_TOKEN" ]; then
+              echo "::error::Secret LABEL_PAT is not set. Add a PAT with issues write access so the claude-bot label can trigger claude-agent.yml."
+              exit 1
+            fi
             # Body is updated first, so the agent sees the clarified issue when the label fires
             GH_TOKEN="$LABEL_TOKEN" gh issue edit "$NUMBER" --add-label claude-bot
           elif [ "$VERDICT" = "NEEDS_INFO" ]; then
