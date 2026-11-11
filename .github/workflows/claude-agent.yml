@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: write
-  issues: read
+  issues: write
   pull-requests: write
   id-token: write
 
@@ -25,6 +25,14 @@ jobs:
       branch: ${{ steps.branch.outputs.name }}
       changed: ${{ steps.push.outputs.changed }}
     steps:
+      - name: Announce start
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          🤖 **Claude Bot:** Starting implementation...'
+
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-toolchain
@@ -47,7 +55,7 @@ jobs:
         run: |
           # Only comments from people with repo access, plus the triage bot's questions
           gh api --paginate "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") | "**\(.user.login)**:\n\(.body)\n"' \
+            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") and (.body | contains("<!-- claude-status -->") | not)) | "**\(.user.login)**:\n\(.body)\n"' \
             > "$RUNNER_TEMP/issue-comments.md"
           [ -s "$RUNNER_TEMP/issue-comments.md" ] || echo "(no comments)" > "$RUNNER_TEMP/issue-comments.md"
 
@@ -104,6 +112,24 @@ jobs:
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/${{ steps.branch.outputs.name }}"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Announce implementation result (changes)
+        if: steps.push.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          ✅ **Claude Bot:** Implementation pushed to branch `${{ steps.branch.outputs.name }}`. Running tests...'
+
+      - name: Announce implementation result (no changes)
+        if: steps.push.outputs.changed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          ⚠️ **Claude Bot:** Finished without making any changes, so there is nothing to test.'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -132,6 +158,14 @@ jobs:
     if: needs.test.outputs.result == 'failure'
     runs-on: ubuntu-latest
     steps:
+      - name: Announce debug start
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          ❌ **Claude Bot:** Tests failed. Debugging now (one attempt)...'
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.implement.outputs.branch }}
@@ -154,7 +188,7 @@ jobs:
         run: |
           # Only comments from people with repo access, plus the triage bot's questions
           gh api --paginate "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") | "**\(.user.login)**:\n\(.body)\n"' \
+            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") and (.body | contains("<!-- claude-status -->") | not)) | "**\(.user.login)**:\n\(.body)\n"' \
             > "$RUNNER_TEMP/issue-comments.md"
           [ -s "$RUNNER_TEMP/issue-comments.md" ] || echo "(no comments)" > "$RUNNER_TEMP/issue-comments.md"
 
@@ -203,6 +237,14 @@ jobs:
           git commit -m "fix: address failing tests for issue #${{ github.event.issue.number }}"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/${{ needs.implement.outputs.branch }}"
 
+      - name: Announce debug result
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          🔧 **Claude Bot:** Debug attempt finished. Re-running tests...'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -243,6 +285,14 @@ jobs:
           pattern: notes-*
           path: ${{ runner.temp }}/notes
 
+      - name: Announce PR creation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          ✅ **Claude Bot:** Tests passed. Opening a pull request...'
+
       - name: Create pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -268,6 +318,15 @@ jobs:
           gh pr create --title "Closes #${ISSUE_NUMBER}: ${ISSUE_TITLE}" \
             --body-file "$RUNNER_TEMP/pr-body.md" --head "$BRANCH" --base "$BASE_BRANCH"
 
+      - name: Announce PR opened
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          URL=$(gh pr list --head "${{ needs.implement.outputs.branch }}" --json url --jq '.[0].url')
+          gh issue comment ${{ github.event.issue.number }} --body "<!-- claude-status -->
+          🎉 **Claude Bot:** Pull request opened: $URL"
+
   # ---- 6. Always append notes (and the failure log, if any) to the run summary ----
   summary:
     needs: [implement, test, debug, retest]
@@ -292,3 +351,11 @@ jobs:
               echo '```'; tail -n 60 "$RUNNER_TEMP/art/test-log-retest/test-output.log"; echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Announce failure
+        if: contains(needs.*.result, 'failure')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body "<!-- claude-status -->
+          🛑 **Claude Bot:** The workflow failed (tests still failing after the debug attempt, or a step errored). No PR was opened. See the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

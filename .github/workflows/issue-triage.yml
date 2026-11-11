@@ -38,6 +38,14 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
+      - name: Announce triage start
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body '<!-- claude-status -->
+          🔍 **Triage:** Beginning triage of this issue...'
+
       - uses: actions/checkout@v4
 
       - name: Fetch issue comments
@@ -45,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh api --paginate "/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            --jq '.[] | select(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") | "**\(.user.login)**:\n\(.body)\n"' \
+            --jq '.[] | select((.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR" or .user.login == "github-actions[bot]") and (.body | contains("<!-- claude-status -->") | not)) | "**\(.user.login)**:\n\(.body)\n"' \
             > "$RUNNER_TEMP/issue-comments.md"
           [ -s "$RUNNER_TEMP/issue-comments.md" ] || echo "(no comments)" > "$RUNNER_TEMP/issue-comments.md"
 
@@ -113,10 +121,12 @@ jobs:
               echo "::error::Secret LABEL_PAT is not set. Add a PAT with issues write access so the claude-bot label can trigger claude-agent.yml."
               exit 1
             fi
+            gh issue comment "$NUMBER" --body "<!-- claude-status -->
+            ✅ **Triage complete:** clarified details were added to the issue description. Passing to Claude Bot..."
             # Body is updated first, so the agent sees the clarified issue when the label fires
             GH_TOKEN="$LABEL_TOKEN" gh issue edit "$NUMBER" --add-label claude-bot
           elif [ "$VERDICT" = "NEEDS_INFO" ]; then
-            { echo "Thanks! Before this can be picked up automatically, could you clarify:"; echo; cat "$RUNNER_TEMP/triage-body.md"; } > "$RUNNER_TEMP/comment.md"
+            { echo "<!-- claude-status -->"; echo "❓ **Triage complete:** more information is needed before Claude Bot can pick this up. Could you clarify:"; echo; cat "$RUNNER_TEMP/triage-body.md"; } > "$RUNNER_TEMP/comment.md"
             gh issue comment "$NUMBER" --body-file "$RUNNER_TEMP/comment.md"
             gh issue edit "$NUMBER" --add-label needs-info
           else
