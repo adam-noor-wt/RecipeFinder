@@ -226,3 +226,18 @@ fun updateFoldersInDatabase(db: FirebaseFirestore, userId: String, folders: Map<
             println("Error updating folders: ${exception.message}")
         }
 }
+
+
+/** Removes [recipeId] from every folder in [model] and persists the result to Firestore. */
+fun removeRecipeFromAllFolders(
+    model: com.example.recipefinder.data.RecipeViewModel,
+    db: FirebaseFirestore,
+    userId: String?,
+    recipeId: Int
+) {
+    val current = model.folders.value
+    if (current.values.none { recipeId in it }) return
+    val pruned = current.mapValues { (_, ids) -> ids.filter { it != recipeId } }
+    model.setFolders(pruned)
+    if (!userId.isNullOrEmpty()) updateFoldersInDatabase(db, userId, pruned)
+}

@@ -33,6 +33,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import com.example.recipefinder.database.removeRecipeFromAllFolders
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -234,6 +235,8 @@ fun HeartbreakerResultsModal(
                                                 Firebase.auth.currentUser?.uid.toString(),
                                                 updatedSaves
                                             )
+
+                                            removeRecipeFromAllFolders(model, Firebase.firestore, Firebase.auth.currentUser?.uid, recipe.id)
 
                                             // Mark as unsaved locally
                                             savedToLibrary[recipe.id] = false

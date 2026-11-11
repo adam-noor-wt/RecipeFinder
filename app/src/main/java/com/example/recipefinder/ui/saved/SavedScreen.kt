@@ -411,6 +411,7 @@ fun SavedScreen(
             selectedTab == 0 -> AllRecipesTab(recipes, isLoaded, onRecipeClick)
             current == null -> FolderListTab(
                 folders = folders,
+                savedIds = recipes.map { it.id }.toSet(),
                 onOpen = { openFolder = it },
                 onCreateFolder = onCreateFolder
             )
@@ -430,6 +431,7 @@ fun SavedScreen(
 @Composable
 private fun FolderListTab(
     folders: Map<String, List<Int>>,
+    savedIds: Set<Int>,
     onOpen: (String) -> Unit,
     onCreateFolder: (String) -> Unit
 ) {
@@ -457,7 +459,7 @@ private fun FolderListTab(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "${folders[name]?.size ?: 0} recipes",
+                        text = "${folders[name]?.count { it in savedIds } ?: 0} recipes",
                         color = Color.White.copy(alpha = 0.85f),
                         style = MaterialTheme.typography.bodySmall
                     )
