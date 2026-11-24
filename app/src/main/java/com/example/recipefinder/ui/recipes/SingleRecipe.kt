@@ -149,9 +149,7 @@ fun SingleRecipeScreen(
                                         .padding(16.dp, top = 16.dp)
                                         .clickable { showPopup.value = true },
                                     color = Color.White,
-                                    style = Typography.headlineMedium,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                                    style = Typography.headlineMedium
                                 )
                                 if (showPopup.value) {
                                     Box(
@@ -329,32 +327,41 @@ fun SingleRecipeScreen(
                                 shape = RoundedCornerShape(8.dp)
                             )
                     ) {
-                        recipe.ingredients.forEach { ingredient ->
+                        recipe.ingredients.forEachIndexed { index, ingredient ->
+                            if (index > 0) {
+                                androidx.compose.material3.HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    thickness = 0.5.dp,
+                                    color = Secondary.copy(alpha = 0.4f)
+                                )
+                            }
                             Row(
-                                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
                             ) {
                                 Text(
                                     text = "\u2022", // Bullet point
                                     color = Secondary,
-                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                    modifier = Modifier.padding(end = 8.dp)
                                 )
                                 Text(
-                                    text = "${ingredient.quantity.fractionString()} ${ingredient.unit.toString().lowercase()} ",
+                                    text = androidx.compose.ui.text.buildAnnotatedString {
+                                        append("${ingredient.quantity.fractionString()} ${ingredient.unit.toString().lowercase()} ")
+                                        pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
+                                        append(ingredient.name)
+                                        pop()
+                                        if (ingredient.note.isNotBlank()) {
+                                            append(" ")
+                                            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color.Gray, fontStyle = FontStyle.Italic))
+                                            append(ingredient.note)
+                                            pop()
+                                        }
+                                    },
                                     color = Color.Black,
-                                    style = Typography.bodyLarge
+                                    style = Typography.bodyLarge,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    text = "${ingredient.name} ",
-                                    color = Color.Black,
-                                    fontWeight = FontWeight.Bold,
-                                    style = Typography.bodyLarge
-                                )
-                                Text(
-                                    text = ingredient.note,
-                                    color = Color.Gray,
-                                    style = Typography.bodyLarge.copy(fontStyle = FontStyle.Italic),
-                                )
-
                             }
                         }
                     }
@@ -370,20 +377,29 @@ fun SingleRecipeScreen(
 
                     ) {
                         recipe.steps.forEach { step ->
-                            Column {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 12.dp)
+                                    .border(1.dp, Secondary.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                    .padding(12.dp)
+                            ) {
                                 Text(
                                     text = "Step ${step.index}: ${step.title}",
-                                    modifier = Modifier.padding(8.dp, 8.dp, 8.dp, 4.dp).fillMaxWidth(),
-                                    style = Typography.titleLarge
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = Typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
                                 )
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     text = step.description,
-                                    modifier = Modifier.padding(8.dp, 4.dp, 8.dp, 8.dp).fillMaxWidth(),
-                                    style = Typography.bodyLarge
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = Typography.bodyLarge.copy(fontWeight = FontWeight.Normal, lineHeight = 24.sp)
                                 )
                             }
-
                         }
+                        // Clearance so the FAB never covers the last step
+                        Spacer(modifier = Modifier.height(88.dp))
                     }
                 }
 
