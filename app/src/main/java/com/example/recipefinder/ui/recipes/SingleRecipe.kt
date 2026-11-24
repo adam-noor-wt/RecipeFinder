@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
@@ -72,12 +73,42 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 
+/** What the Creator section shows. [onClick] is null for non-clickable creators (anonymous / private). */
+data class CreatorInfo(val name: String, val onClick: (() -> kotlin.Unit)? = null)
+
+@Composable
+private fun CreatorSection(creator: CreatorInfo) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .padding(start = 16.dp, bottom = 4.dp)
+            .clickable(enabled = creator.onClick != null) { creator.onClick?.invoke() }
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AccountCircle,
+            contentDescription = "Creator profile icon",
+            tint = Color.White,
+            modifier = Modifier.size(28.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = creator.name,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 @Composable
 fun SingleRecipeScreen(
     recipe: Recipe,
     model: RecipeViewModel,
     saveable: Boolean = true,
-    onEditClick: (Recipe) -> kotlin.Unit = {}
+    onEditClick: (Recipe) -> kotlin.Unit = {},
+    creator: CreatorInfo? = null
 ) {
     val favoritedRecipes = recipeViewModel.savedRecipes.collectAsState()
 
@@ -173,6 +204,7 @@ fun SingleRecipeScreen(
                                     }
                                 }
                             }
+                            if (creator != null) CreatorSection(creator)
                             Text(
                                 text = "Cook Time: ${recipe.preparationTime} minutes",
                                 modifier = Modifier.padding(start = 16.dp),

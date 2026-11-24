@@ -42,6 +42,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import android.widget.Toast
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -147,7 +155,8 @@ private fun AccountCard(
 private fun MyAccount(
     displayName: String?,
     onEditDisplayName: (String) -> Unit,
-    edit: MutableState<Boolean>
+    edit: MutableState<Boolean>,
+    readOnly: Boolean = false
 )
 {
     val focusRequester = remember { FocusRequester() }
@@ -182,7 +191,7 @@ private fun MyAccount(
                     softWrap = true,
                     color = Secondary
                 )
-                FilledIconButton(
+                if (!readOnly) FilledIconButton(
                     onClick = {
                         edit.value = true
                     },
@@ -358,15 +367,64 @@ fun SettingsScreen(
     signOut: () -> Unit,
     recipes: List<Recipe>,
     onRecipeClick: (Recipe) -> Unit?,
-    savedRecipes: List<Recipe>
+    savedRecipes: List<Recipe>,
+    /** Read-only profile of another user: no edit/sign-out/saved section. */
+    readOnly: Boolean = false,
+    uid: String? = null,
+    /** null hides the Public/Private checkbox (e.g. anonymous accounts). */
+    isPublic: Boolean? = null,
+    onPublicChange: (Boolean) -> Unit = {},
+    /** Extra content under the account header, e.g. the Follow button. */
+    headerExtra: @Composable () -> Unit = {}
 ) {
     val edittingName = remember{mutableStateOf(false)}
     val selector = remember{mutableIntStateOf(1)}
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        MyAccount(displayName, onEditDisplayName, edittingName)
+        MyAccount(displayName, onEditDisplayName, edittingName, readOnly)
+        if (!uid.isNullOrEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            ) {
+                Text(
+                    text = "ID: $uid",
+                    style = Typography.labelSmall,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = {
+                    clipboard.setText(AnnotatedString(uid))
+                    Toast.makeText(context, "User ID copied", Toast.LENGTH_SHORT).show()
+                }) {
+                    Icon(
+                        imageVector = Icons.Filled.ContentCopy,
+                        contentDescription = "Copy user ID",
+                        tint = Primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+        if (!readOnly && isPublic != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            ) {
+                Checkbox(checked = isPublic, onCheckedChange = onPublicChange)
+                Text(
+                    text = if (isPublic) "Public profile" else "Private profile",
+                    style = Typography.bodyMedium
+                )
+            }
+        }
+        headerExtra()
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -387,7 +445,7 @@ fun SettingsScreen(
                 onClick = { selector.intValue = 1 }
 
             )
-            AccountCard(
+            if (!readOnly) AccountCard(
                 id = 2,
                 selector = selector.intValue,
                 text = "Recipes Saved",
@@ -412,14 +470,14 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.size(10.dp))
 
         when (selector.intValue) {
-            1 -> Text(text = "Recipes You Created", style = Typography.titleLarge, color = Primary)
+            1 -> Text(text = if (readOnly) "Recipes Created" else "Recipes You Created", style = Typography.titleLarge, color = Primary)
             2 -> Text(text = "Recipes You Saved", style = Typography.titleLarge, color = Primary)
             3 -> Text(text = "Coming soon..", style = Typography.titleLarge, color = Primary)
         }
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(.8f)
+                .weight(1f)
                 .padding(8.dp)
                 .background(androidx.compose.ui.graphics.Color.Transparent)
         ) {
@@ -450,7 +508,7 @@ fun SettingsScreen(
             }
         }
 
-        OutlinedButton(
+        if (!readOnly) OutlinedButton(
             onClick = signOut,
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
             border = androidx.compose.foundation.BorderStroke(1.dp, Color.Red),
