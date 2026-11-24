@@ -1,5 +1,7 @@
 package com.example.recipefinder.ui.login
 
+import com.example.recipefinder.database.ensurePublicProfile
+import com.example.recipefinder.database.writePublicProfile
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.auth.userProfileChangeRequest
@@ -17,7 +19,8 @@ class AccountServiceImpl : AccountService{
         Firebase.auth.signInWithEmailAndPassword(email, password)
             .addOnCompleteListener {
                 onResult(it.exception)
-                if(it.exception == null)
+                if(it.exception == null) {
+                    Firebase.auth.currentUser?.let { u -> ensurePublicProfile(Firebase.firestore, u.uid, u.displayName) }
                     Firebase.firestore.collection("USERS").document(Firebase.auth.currentUser?.uid ?: "")
                         .get()
                         .addOnCompleteListener { task ->
@@ -28,6 +31,7 @@ class AccountServiceImpl : AccountService{
                                 }
                             }
                         }
+                }
             }
 
     }
@@ -57,6 +61,13 @@ class AccountServiceImpl : AccountService{
             userProfileChangeRequest {
                 this.displayName = displayName
             }
-        )?.addOnCompleteListener { onResult(it.exception) } ?: onResult(NullPointerException("No user is currently signed in"))
+        )?.addOnCompleteListener {
+            if (it.exception == null) {
+                Firebase.auth.currentUser?.let { u ->
+                    if (!u.isAnonymous) writePublicProfile(Firebase.firestore, u.uid, displayName = displayName)
+                }
+            }
+            onResult(it.exception)
+        } ?: onResult(NullPointerException("No user is currently signed in"))
     }
 }

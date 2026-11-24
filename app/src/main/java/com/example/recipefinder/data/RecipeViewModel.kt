@@ -25,4 +25,20 @@ class RecipeViewModel : ViewModel() {
     fun setFolders(newFolders: Map<String, List<Int>>) {
         _folders.value = newFolders
     }
+    private val _follows = MutableStateFlow<List<String>>(emptyList())
+    val follows: StateFlow<List<String>> = _follows
+    fun setFollows(value: List<String>) { _follows.value = value }
+    private val _viewed = MutableStateFlow<Set<Int>>(emptySet())
+    /** Ids of followed users' recipes the current user has already seen (by opening the creator's profile). */
+    val viewed: StateFlow<Set<Int>> = _viewed
+    fun setViewed(value: Set<Int>) { _viewed.value = value }
+    private val _profiles = MutableStateFlow<Map<String, PublicProfile>>(emptyMap())
+    val profiles: StateFlow<Map<String, PublicProfile>> = _profiles
+    fun putProfiles(value: Map<String, PublicProfile>) { _profiles.value = _profiles.value + value }
+    private val _socialLoaded = MutableStateFlow(false)
+    val socialLoaded: StateFlow<Boolean> = _socialLoaded
+    fun setSocialLoaded(value: Boolean) { _socialLoaded.value = value }
+    fun clearSocial() {
+        _follows.value = emptyList(); _viewed.value = emptySet(); _profiles.value = emptyMap(); _socialLoaded.value = false
+    }
 }

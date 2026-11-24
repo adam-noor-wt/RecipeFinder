@@ -16,6 +16,8 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +42,8 @@ import java.util.Locale
 fun RecipeFinderTabRow(
     allScreens: List<RecipeDestination>,
     onTabSelected: (RecipeDestination) -> Unit,
-    currentScreen: RecipeDestination
+    currentScreen: RecipeDestination,
+    badges: Map<String, Int> = emptyMap()
 ) {
     Surface(
         Modifier
@@ -56,7 +59,8 @@ fun RecipeFinderTabRow(
                     text = screen.route,
                     icon = screen.icon,
                     onSelected = { onTabSelected(screen) },
-                    selected = currentScreen == screen
+                    selected = currentScreen == screen,
+                    badgeCount = badges[screen.route] ?: 0
                 )
             }
         }
@@ -72,7 +76,7 @@ fun RecipeFinderTabRow(
  * @param selected Whether this tab is currently selected.
  */
 @Composable
-fun RecipeFinderTab(text: String, icon: ImageVector, onSelected: () -> Unit, selected: Boolean) {
+fun RecipeFinderTab(text: String, icon: ImageVector, onSelected: () -> Unit, selected: Boolean, badgeCount: Int = 0) {
     val color = Color.Black
     val durationMillis = if (selected) TabFadeInAnimationDuration else TabFadeOutAnimationDuration
     val animSpec = remember {
@@ -103,7 +107,9 @@ fun RecipeFinderTab(text: String, icon: ImageVector, onSelected: () -> Unit, sel
             )
             .clearAndSetSemantics { contentDescription = text }
     ) {
-        Icon(imageVector = icon, contentDescription = text, tint = tabTintColor)
+        BadgedBox(badge = { if (badgeCount > 0) Badge { Text(badgeCount.toString()) } }) {
+            Icon(imageVector = icon, contentDescription = text, tint = tabTintColor)
+        }
         if (selected) {
             Spacer(Modifier.width(12.dp))
             Text(text.uppercase(Locale.getDefault()), color = tabTintColor)

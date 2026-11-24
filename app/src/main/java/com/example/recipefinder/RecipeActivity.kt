@@ -45,6 +45,19 @@ import com.example.recipefinder.ui.recipes.SingleRecipeScreen
 import com.example.recipefinder.ui.saved.SavedScreen
 import com.example.recipefinder.ui.search.SearchScreen
 import com.example.recipefinder.ui.settings.SettingsScreen
+import com.example.recipefinder.ui.social.SocialScreen
+import com.example.recipefinder.ui.social.FollowedUser
+import com.example.recipefinder.ui.social.visibleName
+import com.example.recipefinder.ui.profile.ProfileScreen
+import com.example.recipefinder.ui.recipes.CreatorInfo
+import com.example.recipefinder.data.PublicProfile
+import com.example.recipefinder.database.*
+import android.widget.Toast
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.firestore.ListenerRegistration
 import com.example.recipefinder.ui.theme.Primary
 import com.example.recipefinder.ui.theme.RecipeFinderTheme
 import com.google.firebase.auth.FirebaseAuth
@@ -145,6 +158,24 @@ fun fetchRecipes(database: FirebaseFirestore) {
     )
 }
 
+/** Loads follows, viewed recipes and the public profiles needed by the social features. */
+fun loadSocialState(database: FirebaseFirestore) {
+    val user = Firebase.auth.currentUser ?: return
+    if (user.isAnonymous) {
+        recipeViewModel.clearSocial()
+        recipeViewModel.setSocialLoaded(true)
+        return
+    }
+    readSocialState(database, user.uid) { state ->
+        recipeViewModel.setFollows(state.follows)
+        recipeViewModel.setViewed(state.viewed)
+        readPublicProfiles(database, state.follows + user.uid) {
+            recipeViewModel.putProfiles(it)
+            recipeViewModel.setSocialLoaded(true)
+        }
+    }
+}
+
 @SuppressLint("ConfigurationScreenWidthHeight")
 @Composable
 fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
@@ -152,6 +183,53 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
     val savedRecipes = recipeViewModel.savedRecipes.collectAsState()
     val folders = recipeViewModel.folders.collectAsState()
     val hasLoaded = recipeViewModel.hasLoaded.collectAsState()
+    val follows = recipeViewModel.follows.collectAsState()
+    val viewed = recipeViewModel.viewed.collectAsState()
+    val profiles = recipeViewModel.profiles.collectAsState()
+    val socialLoaded = recipeViewModel.socialLoaded.collectAsState()
+    val context = LocalContext.current
+
+    // Followed users' recipes the current user hasn't viewed yet (private users never notify)
+    val unviewedByUser = follows.value.mapNotNull { uid ->
+        if (profiles.value[uid]?.isPublic != true) return@mapNotNull null
+        val ids = recipes.value.filter { it.owner == uid && it.id !in viewed.value }.map { it.id }
+        if (ids.isEmpty()) null else uid to ids
+    }.toMap()
+    val unviewedTotal = unviewedByUser.values.sumOf { it.size }
+
+    // Real-time recipe updates + profile backfill when auth state changes
+    DisposableEffect(auth) {
+        var registration: ListenerRegistration? = null
+        val listener = FirebaseAuth.AuthStateListener { a ->
+            registration?.remove()
+            registration = null
+            val user = a.currentUser
+            if (user != null) {
+                if (!user.isAnonymous) ensurePublicProfile(database, user.uid, user.displayName)
+                loadSocialState(database)
+                registration = listenToRecipes(database) { recipeViewModel.setRecipes(it) }
+            } else {
+                recipeViewModel.clearSocial()
+            }
+        }
+        auth?.addAuthStateListener(listener)
+        onDispose {
+            auth?.removeAuthStateListener(listener)
+            registration?.remove()
+        }
+    }
+
+    // One toast per followed user with newly created, unviewed recipes
+    val toasted = remember { mutableSetOf<Int>() }
+    LaunchedEffect(unviewedByUser, socialLoaded.value) {
+        if (!socialLoaded.value) return@LaunchedEffect
+        unviewedByUser.forEach { (uid, ids) ->
+            if (ids.any { it !in toasted }) {
+                toasted.addAll(ids)
+                Toast.makeText(context, "${profiles.value[uid].visibleName()} created a new recipe", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     RecipeFinderTheme {
         // Get the NavController for navigation and the current backstack entry
         val navController = rememberNavController()
@@ -177,7 +255,8 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                                 restoreState = true
                             }
                         },
-                        currentScreen = currentScreen
+                        currentScreen = currentScreen,
+                        badges = mapOf(Social.route to unviewedTotal)
                     )
                 }
             },
@@ -192,6 +271,8 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                                        currentRoute != Home.route &&
                                        currentRoute != EditRecipe.routeWithArgs &&
                                         currentRoute != Discover.route &&
+                                        currentRoute != Social.route &&
+                                        !currentRoute.orEmpty().startsWith(Profile.route) &&
                                        !currentRoute.orEmpty().startsWith(EditRecipe.route)
                     if(shouldShowFab) {
                         FloatingActionButton(
@@ -266,7 +347,63 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                         currentSaves = savedRecipes.value
                     )
                 }
+                composable(route = Social.route) {
+                    val me = Firebase.auth.currentUser
+                    SocialScreen(
+                        followed = follows.value.map { uid ->
+                            FollowedUser(uid, profiles.value[uid], unviewedByUser[uid]?.size ?: 0)
+                        },
+                        onSearch = { query, onResult -> searchPublicProfiles(database, query, me?.uid, onResult) },
+                        onUserClick = { uid -> navController.navigate("${Profile.route}/$uid") },
+                        onUnfollow = { uid ->
+                            me?.let { unfollowUser(database, it.uid, uid) }
+                            recipeViewModel.setFollows(follows.value - uid)
+                        }
+                    )
+                }
+                composable(route = Profile.routeWithArgs, arguments = Profile.arguments) { entry ->
+                    val uid = entry.arguments?.getString(Profile.uidArg) ?: return@composable
+                    val me = Firebase.auth.currentUser
+                    val owned = recipes.value.filter { it.owner == uid }
+                    val isFollowing = uid in follows.value
+                    LaunchedEffect(uid) {
+                        if (profiles.value[uid] == null) readPublicProfile(database, uid) { p ->
+                            p?.let { recipeViewModel.putProfiles(mapOf(uid to it)) }
+                        }
+                    }
+                    // Opening a followed user's profile marks their recipes as viewed
+                    LaunchedEffect(uid, owned.map { it.id }, isFollowing, socialLoaded.value) {
+                        if (me == null || !isFollowing || !socialLoaded.value) return@LaunchedEffect
+                        val fresh = owned.map { it.id }.filter { it !in viewed.value }
+                        if (fresh.isNotEmpty()) {
+                            recipeViewModel.setViewed(viewed.value + fresh)
+                            markRecipesViewed(database, me.uid, fresh)
+                        }
+                    }
+                    val isSelf = me?.uid == uid
+                    val canFollow = me != null && !me.isAnonymous && !isSelf
+                    ProfileScreen(
+                        uid = uid,
+                        displayName = if (isSelf) (me?.displayName ?: "Not set") else profiles.value[uid].visibleName(),
+                        recipes = owned,
+                        isFollowing = isFollowing,
+                        onToggleFollow = if (!canFollow) null else {
+                            {
+                                if (isFollowing) {
+                                    unfollowUser(database, me!!.uid, uid)
+                                    recipeViewModel.setFollows(follows.value - uid)
+                                } else {
+                                    followUser(database, me!!.uid, uid, owned.map { it.id })
+                                    recipeViewModel.setFollows(follows.value + uid)
+                                    recipeViewModel.setViewed(viewed.value + owned.map { it.id })
+                                }
+                            }
+                        },
+                        onRecipeClick = { recipe -> navController.navigate("${SingleRecipe.route}/${recipe.id}") }
+                    )
+                }
                 composable(route = Settings.route) {
+                    val me = Firebase.auth.currentUser
                     SettingsScreen(
                         displayName = Firebase.auth.currentUser?.displayName,
                         onEditDisplayName = {name -> AccountServiceImpl().editDisplayName(name,
@@ -279,7 +416,15 @@ fun RecipeFinderApp(database: FirebaseFirestore, auth: FirebaseAuth?) {
                         recipes = recipes.value.filter {recipe -> recipe.owner == Firebase.auth.currentUser?.uid}
                         ,
                         onRecipeClick = {recipe -> navController.navigate("${SingleRecipe.route}/${recipe.id}") },
-                        savedRecipes = savedRecipes.value
+                        savedRecipes = savedRecipes.value,
+                        uid = me?.uid,
+                        isPublic = if (me == null || me.isAnonymous) null else profiles.value[me.uid]?.isPublic ?: false,
+                        onPublicChange = { checked ->
+                            me?.let {
+                                writePublicProfile(database, it.uid, displayName = it.displayName ?: "", isPublic = checked)
+                                recipeViewModel.putProfiles(mapOf(it.uid to PublicProfile(it.uid, it.displayName ?: "", checked)))
+                            }
+                        }
                     )
                 }
                 composable(route = CreateRecipe.route) {

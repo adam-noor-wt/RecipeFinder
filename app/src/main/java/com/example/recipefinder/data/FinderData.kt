@@ -185,3 +185,10 @@ fun findRecipesIMade(
     }
 
 }
+
+/** Public document PUBLIC_PROFILES/{uid}. Name is only meant to be shown when [isPublic]. */
+data class PublicProfile(
+    val uid: String,
+    val displayName: String = "",
+    val isPublic: Boolean = false
+)

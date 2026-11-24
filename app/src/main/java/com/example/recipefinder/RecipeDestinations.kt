@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -47,6 +48,21 @@ object Settings : RecipeDestination {
     override val route = "settings"
 }
 
+object Social : RecipeDestination {
+    override val icon = Icons.Filled.People
+    override val route = "social"
+}
+
+object Profile : RecipeDestination {
+    override val icon = Icons.Outlined.MailOutline // Placeholder icon, not used in navigation
+    override val route = "profile"
+    const val uidArg = "uid"
+    val routeWithArgs = "${route}/{${uidArg}}"
+    val arguments = listOf(
+        navArgument(uidArg) { type = NavType.StringType }
+    )
+}
+
 object CreateRecipe : RecipeDestination {
     override val icon = Icons.Filled.Add // Placeholder icon, not used in navigation
     override val route = "create_recipe"
@@ -72,4 +88,4 @@ object EditRecipe : RecipeDestination {
     )
 }
 
-val recipeDestinations = listOf(Home, Saved, Search, Discover, Settings)
+val recipeDestinations = listOf(Home, Saved, Search, Discover, Social, Settings)
